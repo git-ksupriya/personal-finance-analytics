@@ -249,7 +249,7 @@ def save_dataset(df, filename):
 
 def main():
 
-    file_path = r"C:\Users\Shivananda\personal-finance-analytics\data\budgetwise_finance_dataset.csv"
+    file_path = r"raw\budgetwise_finance_dataset.csv"
 
     df = load_dataset(file_path)
 
@@ -277,7 +277,7 @@ def main():
 
     cleaning_report(original_rows, df)
 
-    save_dataset(df, "cleaned_dataset.csv")
+    save_dataset(df, "processed/cleaned_dataset.csv")
 
 
 if __name__ == "__main__":
