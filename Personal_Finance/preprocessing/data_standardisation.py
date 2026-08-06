@@ -21,6 +21,10 @@ def inspect_unique_values(df):
         print(df[col].unique())
         print(f"Unique values: {df[col].nunique(dropna=False)}")
 
+    print("\nDATE")
+    print(df["date"].head())
+    print(df["date"].dtype)
+
 
 def standardise_category(df):
     CATEGORY_MAPPING = {
@@ -151,6 +155,15 @@ def standardise_dates(df):
     return df
 
 
+# just in case, for future data handling
+def standardise_transaction_type(df):
+    df["transaction_type"] = (df["transaction_type"]
+        .str.strip()
+        .str.title()
+    )
+    return df
+
+
 def main():
     df = pd.read_csv("processed/cleaned_dataset.csv")
 
@@ -162,12 +175,18 @@ def main():
     df=standardise_locations(df)
 
     # print(df["payment_mode"].isna().sum()) said 696 nan vals
-    df["payment_mmode"] = df["payment_mode"].fillna("Unknown")
-    df=standardise_payment_modes(df)
+    df["payment_mode"] = df["payment_mode"].fillna("Unknown")
+    df = standardise_payment_modes(df)
 
-    df=standardise_dates(df)
+    df = standardise_dates(df)
+
+    df = standardise_transaction_type(df)
 
     inspect_unique_values(df)
+
+    df.to_csv("processed/standardised_dataset.csv", index=False)
+    print("Standardised dataset saved.")
+
 
 
 if __name__ == "__main__":
