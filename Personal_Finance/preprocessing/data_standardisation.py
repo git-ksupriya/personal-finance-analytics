@@ -111,7 +111,33 @@ def standardise_locations(df):
     df["location"] = df["location"].replace(LOCATION_MAPPING)
     return df
 
+def standardise_payment_modes(df):
+    PAYMENT_MAPPING={
+        'card':'Card',
+        'CRD':'Card',
+        'Crd':'Card',
+        'CARD':'Card',
 
+        'Csh':'Cash',
+        'csh':'Cash',
+        'cash':'Cash',
+        'CASH':'Cash',
+
+        'upi':'Upi',
+        'UPI':'Upi',
+        'UPi':'Upi',
+
+        'Bank Transfer':'Bank_Transfer',
+        'bank transfer':'Bank_Transfer',
+        'BankTransfer':'Bank_Transfer',
+        'Bank Transfr':'Bank_Transfer'
+
+        
+    }
+
+    df["payment_mode"] = df["payment_mode"].replace(PAYMENT_MAPPING)
+    return df
+    
 
 
 def main():
@@ -123,6 +149,10 @@ def main():
 
     # print((df["location"]=='Unknown').sum())  said 1103 vals
     df=standardise_locations(df)
+
+    # print(df["payment_mode"].isna().sum()) said 696 nan vals
+    df["payment_mmode"] = df["payment_mode"].fillna("Unknown")
+    df=standardise_payment_modes(df)
 
     inspect_unique_values(df)
 
