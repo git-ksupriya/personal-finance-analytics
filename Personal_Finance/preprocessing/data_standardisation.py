@@ -137,7 +137,18 @@ def standardise_payment_modes(df):
 
     df["payment_mode"] = df["payment_mode"].replace(PAYMENT_MAPPING)
     return df
+
+
+def standardise_dates(df):
+    df["date"] = pd.to_datetime(
+            df["date"],
+            format="mixed",
+            dayfirst=True,
+            errors="coerce"
+        )
     
+    df["date"] = df["date"].dt.normalize()
+    return df
 
 
 def main():
@@ -153,6 +164,8 @@ def main():
     # print(df["payment_mode"].isna().sum()) said 696 nan vals
     df["payment_mmode"] = df["payment_mode"].fillna("Unknown")
     df=standardise_payment_modes(df)
+
+    df=standardise_dates(df)
 
     inspect_unique_values(df)
 
