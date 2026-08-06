@@ -73,6 +73,47 @@ def standardise_category(df):
 
 
 
+def standardise_locations(df):
+    LOCATION_MAPPING={
+        'BAN':'Bangalore',
+        'BANGALORE':'Bangalore',
+        'bangalore':'Bangalore',
+        'CHENNAI':'Chennai',
+        'CHE':'Chennai',
+        'chennai':'Chennai',
+        'PUNE':'Pune',
+        'pune':'Pune',
+        'PUN':'Pune',
+        'LUC':'Lucknow',
+        'lucknow':'Lucknow',
+        'LUCKNOW':'Lucknow',
+        'hyderabad':'Hyderabad',
+        'HYDERABAD':'Hyderabad',
+        'HYD':'Hyderabad',
+        'JAI':'Jaipur',
+        'JAIPUR':'Jaipur',
+        'jaipur':'Jaipur',
+        'KOL':'Kolkata',
+        'KOLKATA':'Kolkata',
+        'kolkata':'Kolkata',
+        'AHM':'Ahmedabad',
+        'AHMEDABAD':'Ahmedabad',
+        'ahmedabad':'Ahmedabad',
+        'DELHI':'Delhi',
+        'DEL':'Delhi',
+        'delhi':'Delhi',
+        'MUM':'Mumbai',
+        'mumbai':'Mumbai',
+        'MUMBAI':'Mumbai',
+
+    }
+
+    df["location"] = df["location"].replace(LOCATION_MAPPING)
+    return df
+
+
+
+
 def main():
     df = pd.read_csv("processed/cleaned_dataset.csv")
 
@@ -80,7 +121,8 @@ def main():
     df["category"] = df["category"].fillna("Others")
     df = standardise_category(df)
 
-
+    # print((df["location"]=='Unknown').sum())  said 1103 vals
+    df=standardise_locations(df)
 
     inspect_unique_values(df)
 
