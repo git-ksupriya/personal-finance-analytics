@@ -51,3 +51,12 @@ def calculate_transaction_frequency(df):
     """Total number of transactions each user has made, added as a column on every row."""
     df["user_txn_frequency"] = df.groupby("user_id")["transaction_id"].transform("count")
     return df
+
+def calculate_rolling_average(df, window=3):
+    """Rolling average of transaction amount over the last N transactions, per user."""
+    df = df.sort_values(["user_id", "date"])
+    df[f"rolling_avg_{window}"] = (
+        df.groupby("user_id")["amount"]
+        .transform(lambda s: s.rolling(window, min_periods=1).mean())
+    )
+    return df
