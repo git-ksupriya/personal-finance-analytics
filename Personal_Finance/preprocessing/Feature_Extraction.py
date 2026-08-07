@@ -18,3 +18,32 @@ def calculate_days_between_transactions(df):
     df = df.sort_values(["user_id", "date"])
     df["days_since_last_txn"] = df.groupby("user_id")["date"].diff().dt.days
     return df
+
+def calculate_monthly_spending(df):
+    """Total Expense amount per user per calendar month, merged back onto every row."""
+    df["year_month"] = df["date"].dt.to_period("M").astype(str)
+
+    expense = df[df["transaction_type"] == "Expense"]
+    monthly_total = (
+        expense.groupby(["user_id", "year_month"])["amount"]
+        .sum()
+        .reset_index()
+        .rename(columns={"amount": "monthly_total_spend"})
+    )
+
+    df = df.merge(monthly_total, on=["user_id", "year_month"], how="left")
+    return df
+
+def calculate_category_spending(df):
+    """Total Expense amount per user, per month, per category. Requires 'year_month' column
+    (created in calculate_monthly_spending) — run that function first."""
+    expense = df[df["transaction_type"] == "Expense"]
+    category_monthly = (
+        expense.groupby(["user_id", "year_month", "category"])["amount"]
+        .sum()
+        .reset_index()
+        .rename(columns={"amount": "category_monthly_spend"})
+    )
+
+    df = df.merge(category_monthly, on=["user_id", "year_month", "category"], how="left")
+    return df
