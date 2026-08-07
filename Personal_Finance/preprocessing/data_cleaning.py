@@ -174,18 +174,7 @@ def validate_amounts(df):
 
 def validate_dates(df):
 
-    print("\nConverting Dates...")
-
-    df["date"] = pd.to_datetime(
-        df["date"],
-        format="mixed",
-        dayfirst=True,
-        errors="coerce"
-    )
-
-    invalid_dates = df["date"].isna().sum()
-
-    print("Invalid Dates :", invalid_dates)
+    print("Removing rows with Date as nan")
 
     df.dropna(subset=["date"], inplace=True)
 
