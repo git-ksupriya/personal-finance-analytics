@@ -10,4 +10,22 @@ CREATE TABLE users (
     phone VARCHAR(15),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- ===========================================
+-- USER SESSIONS TABLE
+-- ===========================================
 
+CREATE TABLE user_sessions (
+    session_id SERIAL PRIMARY KEY,
+
+    user_id VARCHAR(10) NOT NULL,
+
+    token TEXT NOT NULL,
+
+    device_info VARCHAR(100),
+
+    expires_at TIMESTAMP NOT NULL,
+
+    FOREIGN KEY(user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE
+);
