@@ -33,7 +33,6 @@ def calculate_monthly_spending(df):
 
     df = df.merge(monthly_total, on=["user_id", "year_month"], how="left")
     return df
-
 def calculate_category_spending(df):
     """Total Expense amount per user, per month, per category. Requires 'year_month' column
     (created in calculate_monthly_spending) — run that function first."""
@@ -46,4 +45,9 @@ def calculate_category_spending(df):
     )
 
     df = df.merge(category_monthly, on=["user_id", "year_month", "category"], how="left")
+    return df
+
+def calculate_transaction_frequency(df):
+    """Total number of transactions each user has made, added as a column on every row."""
+    df["user_txn_frequency"] = df.groupby("user_id")["transaction_id"].transform("count")
     return df
