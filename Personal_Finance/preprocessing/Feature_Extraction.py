@@ -60,3 +60,21 @@ def calculate_rolling_average(df, window=3):
         .transform(lambda s: s.rolling(window, min_periods=1).mean())
     )
     return df
+
+def main():
+    df = pd.read_csv("processed/standardised_dataset.csv")
+    df["date"] = pd.to_datetime(df["date"])
+
+    df = extract_date_parts(df)
+    df = calculate_days_between_transactions(df)
+    df = calculate_monthly_spending(df)          # must run before calculate_category_spending
+    df = calculate_category_spending(df)          # depends on year_month from the line above
+    df = calculate_transaction_frequency(df)
+    df = calculate_rolling_average(df)
+
+    df.to_csv("processed/feature_engineered_dataset.csv", index=False)
+    print("Feature engineered dataset saved.")
+
+
+if __name__ == "__main__":
+    main()
