@@ -4,6 +4,10 @@ Builds on top of the standardised dataset (processed/standardised_dataset.csv)
 '''
 
 import pandas as pd
+<<<<<<< Updated upstream
+=======
+import os
+>>>>>>> Stashed changes
 
 
 def extract_date_parts(df):
@@ -62,9 +66,15 @@ def calculate_rolling_average(df, window=3):
     return df
 
 def main():
+<<<<<<< Updated upstream
     df = pd.read_csv("processed/standardised_dataset.csv")
     df["date"] = pd.to_datetime(df["date"])
 
+=======
+    #df = pd.read_csv("processed/standardised_dataset.csv")
+    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "processed/standardised_dataset.csv"))
+    df["date"] = pd.to_datetime(df["date"])
+>>>>>>> Stashed changes
     df = extract_date_parts(df)
     df = calculate_days_between_transactions(df)
     df = calculate_monthly_spending(df)          # must run before calculate_category_spending
@@ -72,9 +82,16 @@ def main():
     df = calculate_transaction_frequency(df)
     df = calculate_rolling_average(df)
 
+<<<<<<< Updated upstream
     df.to_csv("processed/feature_engineered_dataset.csv", index=False)
     print("Feature engineered dataset saved.")
 
 
+=======
+    #df.to_csv("processed/feature_engineered_dataset.csv", index=False)
+    df.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "processed/feature_engineered_dataset.csv"), index=False)
+    print("Feature engineered dataset saved.")
+
+>>>>>>> Stashed changes
 if __name__ == "__main__":
     main()
