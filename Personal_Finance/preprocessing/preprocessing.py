@@ -1,4 +1,5 @@
 import data_cleaning, data_standardisation, Feature_Extraction, sequence_preparation
+import os, numpy as np
 
 def main():
     # 1. Load raw dataset
@@ -75,6 +76,25 @@ def main():
     print("   type :", type(auto_data))
     print("   shape:", getattr(auto_data, "shape", None))
 
-    
+    # 7. Save outputs
+    processed_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "processed")
+
+    os.makedirs(processed_dir, exist_ok=True)
+
+    np.save(os.path.join(processed_dir, "X_train.npy"), X_train)
+    np.save(os.path.join(processed_dir, "X_test.npy"), X_test)
+    np.save(os.path.join(processed_dir, "y_train.npy"), y_train)
+    np.save(os.path.join(processed_dir, "y_test.npy"), y_test)
+
+    df.to_csv(os.path.join(processed_dir, "feature_engineered_dataset.csv"), index=False)
+
+    if isinstance(auto_data, np.ndarray):
+        np.save(os.path.join(processed_dir, "autoencoder_data.npy"), auto_data)
+    else:
+        auto_data.to_csv(os.path.join(processed_dir, "autoencoder_data.csv"), index=False)
+
+    print("8. All preprocessing outputs saved.")
 
 main()
