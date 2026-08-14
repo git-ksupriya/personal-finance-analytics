@@ -11,8 +11,9 @@ def main():
     df = data_cleaning.handle_missing_values(df)
     df = data_cleaning.remove_duplicates(df)
 
-    data_cleaning.validate_transaction_ids(df)
-    data_cleaning.validate_user_ids(df)
+    #currently these are for diagnostic details, not used for modifying df
+    #data_cleaning.validate_transaction_ids(df)
+    #data_cleaning.validate_user_ids(df)
 
     df = data_cleaning.clean_amount_column(df)
     df = data_cleaning.validate_amounts(df)

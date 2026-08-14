@@ -8,9 +8,6 @@ import re
 
 def load_dataset(file_path):
     df = pd.read_csv(file_path)
-    print("=" * 60)
-    print("Dataset Loaded Successfully")
-    print("=" * 60)
     print(f"Rows    : {df.shape[0]}")
     print(f"Columns : {df.shape[1]}\n")
     return df
@@ -124,8 +121,6 @@ def validate_user_ids(df):
 
 def clean_amount_column(df):
 
-    print("\nCleaning Amount Column...")
-
     def clean_amount(value):
 
         value = str(value)
@@ -150,17 +145,13 @@ def clean_amount_column(df):
 
 def validate_amounts(df):
 
-    print("\n========== AMOUNT SUMMARY ==========\n")
-
-    print(df["amount"].describe())
-
     negative = len(df[df["amount"] < 0])
 
     zero = len(df[df["amount"] == 0])
 
-    print("\nNegative Amounts :", negative)
+    #print("\nNegative Amounts :", negative)
 
-    print("Zero Amounts :", zero)
+    #print("Zero Amounts :", zero)
 
     # Remove invalid amounts
     df = df[df["amount"] > 0]
@@ -173,8 +164,6 @@ def validate_amounts(df):
 # =====================================================
 
 def validate_dates(df):
-
-    print("Removing rows with Date as nan")
 
     df.dropna(subset=["date"], inplace=True)
 
@@ -195,7 +184,7 @@ def remove_outliers(df):
 
     removed = before - len(df)
 
-    print("Outlier Records Removed :", removed)
+    #print("Outlier Records Removed :", removed)
 
     return df
 
@@ -229,7 +218,7 @@ def save_dataset(df, filename):
 
     df.to_csv(filename, index=False)
 
-    print(f"\nDataset saved as {filename}")
+    #print(f"\nDataset saved as {filename}")
 
 
 # =====================================================
@@ -241,6 +230,9 @@ def main():
     file_path = r"raw\budgetwise_finance_dataset.csv"
 
     df = load_dataset(file_path)
+    print("=" * 60)
+    print("Dataset Loaded Successfully")
+    print("=" * 60)
 
     original_rows = len(df)
 
@@ -256,10 +248,14 @@ def main():
 
     validate_user_ids(df)
 
+    print("\nCleaning Amount Column...")
     df = clean_amount_column(df)
 
     df = validate_amounts(df)
+    print("\n========== AMOUNT SUMMARY ==========\n")
+    print(df["amount"].describe())
 
+    print("Removing rows with Date as nan")
     df = validate_dates(df)
 
     df = remove_outliers(df)
