@@ -204,3 +204,44 @@ CREATE TABLE goals (
     CONSTRAINT chk_goal_progress
         CHECK (current_amount <= target_amount)
 );
+
+
+-- Seeding initial lookup tables
+
+INSERT INTO categories (category_name) VALUES
+('Education'),
+('Rent'),
+('Freelance'),
+('Entertainment'),
+('Food'),
+('Salary'),
+('Utilities'),
+('Others'),
+('Travel'),
+('Investment'),
+('Health'),
+('Savings'),
+('Bonus');
+
+
+INSERT INTO payment_modes (mode_name) VALUES
+('Card'),
+('Unknown'),
+('Cash'),
+('Upi'),
+('Bank_Transfer');
+
+
+INSERT INTO locations (location_name) VALUES
+('Ahmedabad'),
+('Hyderabad'),
+('Bangalore'),
+('Unknown'),
+('Lucknow'),
+('Kolkata'),
+('Chennai'),
+('Pune'),
+('Jaipur'),
+('Delhi'),
+('Mumbai');
+	
