@@ -67,3 +67,64 @@ CREATE TABLE statement_uploads (
     CONSTRAINT uq_upload_user
         UNIQUE (upload_id, user_id)
 );
+
+
+CREATE TABLE transactions (
+    -- Internal DB identifier.
+    -- Can't use the raw dataset transaction ID as PK
+    -- because the dataset contains duplicates.
+    transaction_id SERIAL PRIMARY KEY,
+    -- Original transaction ID from the dataset.
+    source_transaction_id VARCHAR(20),
+    user_id VARCHAR(10) NOT NULL,
+    account_id INTEGER,
+    category_id INTEGER NOT NULL,
+    payment_mode_id INTEGER,
+    location_id INTEGER,
+    amount NUMERIC(12,2) NOT NULL,
+    transaction_type VARCHAR(10) NOT NULL,
+    transaction_date DATE NOT NULL,
+    description TEXT,
+    source VARCHAR(10) NOT NULL DEFAULT 'manual',
+    upload_id INTEGER,
+    -- User must exist.
+    CONSTRAINT fk_transactions_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE,
+    -- Account must belong to the same user.
+    CONSTRAINT fk_transactions_account_user
+        FOREIGN KEY (account_id, user_id)
+        REFERENCES accounts(account_id, user_id)
+        ON DELETE SET NULL (account_id),
+    -- Category must exist.
+    CONSTRAINT fk_transactions_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(category_id),
+    -- Payment mode must exist.
+    CONSTRAINT fk_transactions_payment_mode
+        FOREIGN KEY (payment_mode_id)
+        REFERENCES payment_modes(payment_mode_id),
+    -- Location must exist.
+    CONSTRAINT fk_transactions_location
+        FOREIGN KEY (location_id)
+        REFERENCES locations(location_id),
+    -- Upload must belong to the same user.
+    CONSTRAINT fk_transactions_upload_user
+        FOREIGN KEY (upload_id, user_id)
+        REFERENCES statement_uploads(upload_id, user_id)
+        ON DELETE SET NULL (upload_id),
+    -- Amount is stored as a positive value.
+    -- transaction_type determines Income vs Expense.
+    CONSTRAINT chk_transaction_amount
+        CHECK (amount > 0),
+    CONSTRAINT chk_transaction_type
+        CHECK (
+            transaction_type IN ('Expense', 'Income')
+        ),
+    CONSTRAINT chk_transaction_source
+        CHECK (
+            source IN ('manual', 'csv', 'pdf')
+        )
+);
+
