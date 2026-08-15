@@ -128,3 +128,79 @@ CREATE TABLE transactions (
         )
 );
 
+
+CREATE TABLE budgets (
+    budget_id SERIAL PRIMARY KEY,
+    user_id VARCHAR(10) NOT NULL,
+    category_id INTEGER NOT NULL,
+    -- Always store first day of month.
+    -- Example: 2026-08-01
+    month DATE NOT NULL,
+    budget_amount NUMERIC(12,2) NOT NULL,
+    CONSTRAINT fk_budgets_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_budgets_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(category_id),
+    CONSTRAINT chk_budget_amount
+        CHECK (budget_amount >= 0),
+    CONSTRAINT chk_budget_month
+        CHECK (EXTRACT(DAY FROM month) = 1),
+    -- A user can have only one budget
+    -- for a category in a particular month.
+    CONSTRAINT uq_user_category_month
+        UNIQUE (user_id, category_id, month)
+);
+
+
+CREATE TABLE recurring_payments (
+    recurring_id SERIAL PRIMARY KEY,
+    user_id VARCHAR(10) NOT NULL,
+    category_id INTEGER NOT NULL,
+    amount NUMERIC(12,2) NOT NULL,
+    frequency VARCHAR(20) NOT NULL,
+    next_due_date DATE NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    CONSTRAINT fk_recurring_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_recurring_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(category_id),
+    CONSTRAINT chk_recurring_amount
+        CHECK (amount > 0),
+    CONSTRAINT chk_recurring_frequency
+        CHECK (
+            frequency IN (
+                'daily',
+                'weekly',
+                'monthly',
+                'quarterly',
+                'yearly'
+            )
+        )
+);
+
+CREATE TABLE goals (
+    goal_id SERIAL PRIMARY KEY,
+    user_id VARCHAR(10) NOT NULL,
+    goal_name VARCHAR(100) NOT NULL,
+    target_amount NUMERIC(12,2) NOT NULL,
+    current_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+    target_date DATE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_goals_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE,
+    CONSTRAINT chk_goal_target
+        CHECK (target_amount > 0),
+    CONSTRAINT chk_goal_current
+        CHECK (current_amount >= 0),
+    CONSTRAINT chk_goal_progress
+        CHECK (current_amount <= target_amount)
+);
