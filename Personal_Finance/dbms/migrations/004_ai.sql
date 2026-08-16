@@ -61,7 +61,7 @@ CREATE TABLE predictions (
 CREATE TABLE anomalies (
     anomaly_id SERIAL PRIMARY KEY,
 
-    transaction_id VARCHAR(20) NOT NULL,
+    transaction_id INTEGER NOT NULL,
 
     model_id INTEGER NOT NULL,
 
