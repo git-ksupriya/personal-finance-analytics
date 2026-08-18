@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <title>User Spending</title>
+
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<header>
+    <h1>Top Spending of Each User</h1>
+</header>
+
+<nav>
+    <a href="/">Home</a>
+</nav>
+
+<div class="container">
+
+    <div class="card">
+
+        <h2>Highest Expense for Each User</h2>
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Type</th>
+                </tr>
+            </thead>
+
+            <tbody id="userSpendingTable">
+                <tr>
+                    <td colspan="4">Loading...</td>
+                </tr>
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+<script src="/script.js"></script>
+
+<script>
+    loadUserSpending();
+</script>
+
+</body>
+</html>

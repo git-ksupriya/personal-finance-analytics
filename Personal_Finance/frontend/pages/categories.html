@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Distinct Categories</title>
+
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<header>
+    <h1>Distinct Categories</h1>
+</header>
+
+<nav>
+    <a href="/">Home</a>
+</nav>
+
+<div class="container">
+
+    <div class="card">
+
+        <h2>Categories used in Transactions</h2>
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Category</th>
+                </tr>
+            </thead>
+
+            <tbody id="categoriesTable">
+                <tr>
+                    <td>Loading...</td>
+                </tr>
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+<script src="/script.js"></script>
+
+<script>
+    loadCategories();
+</script>
+
+</body>
+</html>
