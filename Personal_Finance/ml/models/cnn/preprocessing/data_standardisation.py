@@ -1,5 +1,26 @@
 import pandas as pd
+from pathlib import Path
 
+
+# ============================================================
+# PATH CONFIGURATION
+# ============================================================
+
+# Current directory:
+# cnn/preprocessing/
+
+CURRENT_DIR = Path(__file__).resolve().parent
+
+# CNN preprocessing directory
+PROCESSED_DIR = CURRENT_DIR.parent / "processed"
+
+# Make sure processed directory exists
+PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ============================================================
+# CATEGORY MAPPING
+# ============================================================
 
 CATEGORY_MAPPING = {
 
@@ -47,6 +68,10 @@ CATEGORY_MAPPING = {
 }
 
 
+# ============================================================
+# LOCATION MAPPING
+# ============================================================
+
 LOCATION_MAPPING = {
 
     "BAN": "Bangalore",
@@ -91,6 +116,10 @@ LOCATION_MAPPING = {
 }
 
 
+# ============================================================
+# PAYMENT MODE MAPPING
+# ============================================================
+
 PAYMENT_MAPPING = {
 
     "card": "Card",
@@ -114,6 +143,10 @@ PAYMENT_MAPPING = {
 }
 
 
+# ============================================================
+# STANDARDISE CATEGORY
+# ============================================================
+
 def standardise_category(df):
 
     df["category"] = df["category"].fillna("Others")
@@ -124,6 +157,10 @@ def standardise_category(df):
 
     return df
 
+
+# ============================================================
+# STANDARDISE LOCATIONS
+# ============================================================
 
 def standardise_locations(df):
 
@@ -136,6 +173,10 @@ def standardise_locations(df):
     return df
 
 
+# ============================================================
+# STANDARDISE PAYMENT MODES
+# ============================================================
+
 def standardise_payment_modes(df):
 
     df["payment_mode"] = df["payment_mode"].fillna("Unknown")
@@ -146,6 +187,10 @@ def standardise_payment_modes(df):
 
     return df
 
+
+# ============================================================
+# STANDARDISE DATES
+# ============================================================
 
 def standardise_dates(df):
 
@@ -159,6 +204,10 @@ def standardise_dates(df):
     return df
 
 
+# ============================================================
+# STANDARDISE TRANSACTION TYPE
+# ============================================================
+
 def standardise_transaction_type(df):
 
     df["transaction_type"] = (
@@ -171,12 +220,28 @@ def standardise_transaction_type(df):
     return df
 
 
+# ============================================================
+# MAIN
+# ============================================================
+
 def main():
 
-    df = pd.read_csv(
-        "processed/cleaned_dataset.csv"
-    )
+    print("=" * 60)
+    print("CNN DATA STANDARDISATION")
+    print("=" * 60)
 
+    # Input from CNN preprocessing folder
+    input_path = PROCESSED_DIR / "cleaned_dataset.csv"
+
+    print("\nReading:")
+    print(input_path)
+
+    df = pd.read_csv(input_path)
+
+    print(f"\nRows    : {df.shape[0]}")
+    print(f"Columns : {df.shape[1]}")
+
+    # Standardisation
     df = standardise_category(df)
 
     df = standardise_locations(df)
@@ -187,12 +252,16 @@ def main():
 
     df = standardise_transaction_type(df)
 
+    # Output
+    output_path = PROCESSED_DIR / "standardised_dataset.csv"
+
     df.to_csv(
-        "processed/standardised_dataset.csv",
+        output_path,
         index=False
     )
 
-    print("Standardised dataset saved.")
+    print("\nStandardised dataset saved to:")
+    print(output_path)
 
 
 if __name__ == "__main__":
