@@ -1,49 +1,62 @@
+import os
 from pathlib import Path
-import sys
+
 import numpy as np
 
 import data_cleaning
 import data_standardisation
 import feature_extraction
+
 from sequence_preparation import CNNSequencePreparation
 
 
 # ============================================================
-# PATH CONFIGURATION
+# FIND PROJECT DIRECTORIES
 # ============================================================
-
-# Current folder:
-# Personal_Finance/ml/models/cnn/preprocessing/
 
 CURRENT_DIR = Path(__file__).resolve().parent
 
-# Project root:
-# Personal_Finance/
-PROJECT_ROOT = CURRENT_DIR.parents[4]
 
-# Raw dataset location
-RAW_DATA_PATH = (
-    PROJECT_ROOT
+def find_personal_finance_directory():
+    """
+    Find the Personal_Finance directory by searching
+    through the parent directories of this file.
+    """
+
+    for parent in [CURRENT_DIR] + list(CURRENT_DIR.parents):
+
+        if parent.name == "Personal_Finance":
+            return parent
+
+    raise FileNotFoundError(
+        "Could not find the 'Personal_Finance' directory."
+    )
+
+
+PERSONAL_FINANCE_DIR = find_personal_finance_directory()
+
+# Repository root
+PROJECT_ROOT = PERSONAL_FINANCE_DIR.parent
+
+
+# ============================================================
+# DATASET PATHS
+# ============================================================
+
+RAW_DATASET = (
+    PERSONAL_FINANCE_DIR
     / "preprocessing"
     / "raw"
     / "budgetwise_finance_dataset.csv"
 )
 
-# CNN processed-data folder
-PROCESSED_DIR = (
-    CURRENT_DIR.parent
-    / "processed"
-)
 
-# Create processed directory if it doesn't exist
-PROCESSED_DIR.mkdir(
-    parents=True,
-    exist_ok=True
-)
+# Processed directory
+PROCESSED_DIR = PROJECT_ROOT / "processed"
 
 
 # ============================================================
-# MAIN PREPROCESSING PIPELINE
+# MAIN
 # ============================================================
 
 def main():
@@ -53,47 +66,60 @@ def main():
     print("=" * 60)
 
     # --------------------------------------------------------
-    # Check raw dataset
+    # Display paths
     # --------------------------------------------------------
+
+    print("\nCurrent file:")
+    print(Path(__file__).resolve())
+
+    print("\nPersonal_Finance directory:")
+    print(PERSONAL_FINANCE_DIR)
+
+    print("\nProject root:")
+    print(PROJECT_ROOT)
 
     print("\nChecking dataset path...")
 
     print("Dataset:")
-    print(RAW_DATA_PATH)
+    print(RAW_DATASET)
 
-    if not RAW_DATA_PATH.exists():
+    # --------------------------------------------------------
+    # Check dataset
+    # --------------------------------------------------------
+
+    if not RAW_DATASET.exists():
 
         print("\nERROR: Dataset not found!")
-        print("Expected location:")
-        print(RAW_DATA_PATH)
+
+        print("\nExpected location:")
+        print(RAW_DATASET)
+
+        print("\nPlease make sure the dataset exists at:")
 
         print(
-            "\nMake sure budgetwise_finance_dataset.csv "
-            "exists inside:"
-        )
-
-        print(
-            PROJECT_ROOT
+            PERSONAL_FINANCE_DIR
             / "preprocessing"
             / "raw"
         )
 
-        sys.exit(1)
+        return
 
-    # --------------------------------------------------------
-    # 1. Load raw dataset
-    # --------------------------------------------------------
+    print("\nDataset found successfully!")
+
+    # ========================================================
+    # 1. LOAD DATASET
+    # ========================================================
 
     df = data_cleaning.load_dataset(
-        str(RAW_DATA_PATH)
+        str(RAW_DATASET)
     )
 
     print("\n1. Dataset loaded")
     print("Shape:", df.shape)
 
-    # --------------------------------------------------------
-    # 2. Cleaning
-    # --------------------------------------------------------
+    # ========================================================
+    # 2. DATA CLEANING
+    # ========================================================
 
     df = data_cleaning.handle_missing_values(df)
 
@@ -110,9 +136,9 @@ def main():
     print("\n2. Cleaning complete")
     print("Shape:", df.shape)
 
-    # --------------------------------------------------------
-    # 3. Standardisation
-    # --------------------------------------------------------
+    # ========================================================
+    # 3. STANDARDISATION
+    # ========================================================
 
     df = data_standardisation.standardise_category(df)
 
@@ -127,9 +153,9 @@ def main():
     print("\n3. Standardisation complete")
     print("Shape:", df.shape)
 
-    # --------------------------------------------------------
-    # 4. Feature Engineering
-    # --------------------------------------------------------
+    # ========================================================
+    # 4. FEATURE ENGINEERING
+    # ========================================================
 
     df = feature_extraction.extract_date_parts(df)
 
@@ -161,9 +187,9 @@ def main():
     print("\n4. Feature engineering complete")
     print("Shape:", df.shape)
 
-    # --------------------------------------------------------
-    # 5. CNN Sequence Preparation
-    # --------------------------------------------------------
+    # ========================================================
+    # 5. CNN SEQUENCE PREPARATION
+    # ========================================================
 
     prep = CNNSequencePreparation(
         window_size=3
@@ -173,14 +199,14 @@ def main():
 
     X, y = prep.create_sequences(df)
 
-    print("\n5. Sequences created")
+    print("\n5. CNN sequences created")
 
     print("X shape:", X.shape)
     print("y shape:", y.shape)
 
-    # --------------------------------------------------------
-    # 6. Chronological Train-Test Split
-    # --------------------------------------------------------
+    # ========================================================
+    # 6. TRAIN TEST SPLIT
+    # ========================================================
 
     (
         X_train,
@@ -199,9 +225,9 @@ def main():
     print("y_train:", y_train.shape)
     print("y_test :", y_test.shape)
 
-    # --------------------------------------------------------
-    # 7. CNN Reshape
-    # --------------------------------------------------------
+    # ========================================================
+    # 7. CNN RESHAPE
+    # ========================================================
 
     X_train = prep.reshape_for_cnn(
         X_train
@@ -216,11 +242,21 @@ def main():
     print("X_train:", X_train.shape)
     print("X_test :", X_test.shape)
 
-    # --------------------------------------------------------
-    # 8. Save processed data
-    # --------------------------------------------------------
+    # ========================================================
+    # 8. CREATE PROCESSED DIRECTORY
+    # ========================================================
 
-    print("\n8. Saving CNN preprocessing outputs...")
+    PROCESSED_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    print("\nProcessed directory:")
+    print(PROCESSED_DIR)
+
+    # ========================================================
+    # 9. SAVE TRAINING DATA
+    # ========================================================
 
     np.save(
         PROCESSED_DIR / "X_train_cnn.npy",
@@ -242,39 +278,62 @@ def main():
         y_test
     )
 
-    df.to_csv(
+    # ========================================================
+    # 10. SAVE FEATURE ENGINEERED DATASET
+    # ========================================================
+
+    feature_dataset_path = (
         PROCESSED_DIR
-        / "feature_engineered_dataset_cnn.csv",
+        / "feature_engineered_dataset_cnn.csv"
+    )
+
+    df.to_csv(
+        feature_dataset_path,
         index=False
     )
 
-    # --------------------------------------------------------
-    # Final report
-    # --------------------------------------------------------
+    # ========================================================
+    # FINAL OUTPUT
+    # ========================================================
 
     print("\n" + "=" * 60)
     print("CNN PREPROCESSING COMPLETED SUCCESSFULLY")
     print("=" * 60)
 
-    print("\nOutput directory:")
-    print(PROCESSED_DIR)
-
     print("\nGenerated files:")
 
-    print("✓ X_train_cnn.npy")
-    print("✓ X_test_cnn.npy")
-    print("✓ y_train_cnn.npy")
-    print("✓ y_test_cnn.npy")
-    print("✓ feature_engineered_dataset_cnn.csv")
+    print(
+        PROCESSED_DIR / "X_train_cnn.npy"
+    )
+
+    print(
+        PROCESSED_DIR / "X_test_cnn.npy"
+    )
+
+    print(
+        PROCESSED_DIR / "y_train_cnn.npy"
+    )
+
+    print(
+        PROCESSED_DIR / "y_test_cnn.npy"
+    )
+
+    print(
+        PROCESSED_DIR
+        / "feature_engineered_dataset_cnn.csv"
+    )
 
     print("\nFinal shapes:")
+
     print("X_train:", X_train.shape)
     print("X_test :", X_test.shape)
     print("y_train:", y_train.shape)
     print("y_test :", y_test.shape)
 
-    print("\n" + "=" * 60)
 
+# ============================================================
+# RUN
+# ============================================================
 
 if __name__ == "__main__":
     main()
