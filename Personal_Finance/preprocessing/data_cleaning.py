@@ -180,11 +180,11 @@ def remove_outliers(df):
 
     before = len(df)
 
-    df = df[df["amount"] < 1000000]
+    df = df[df["amount"] < 100000]
 
     removed = before - len(df)
 
-    #print("Outlier Records Removed :", removed)
+    print(f"Outlier Records Removed (Amount >= 100,000) : {removed}")
 
     return df
 
