@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 import sys
 import numpy as np
 
@@ -8,29 +8,92 @@ import feature_extraction
 from sequence_preparation import CNNSequencePreparation
 
 
+# ============================================================
+# PATH CONFIGURATION
+# ============================================================
+
+# Current folder:
+# Personal_Finance/ml/models/cnn/preprocessing/
+
+CURRENT_DIR = Path(__file__).resolve().parent
+
+# Project root:
+# Personal_Finance/
+PROJECT_ROOT = CURRENT_DIR.parents[4]
+
+# Raw dataset location
+RAW_DATA_PATH = (
+    PROJECT_ROOT
+    / "preprocessing"
+    / "raw"
+    / "budgetwise_finance_dataset.csv"
+)
+
+# CNN processed-data folder
+PROCESSED_DIR = (
+    CURRENT_DIR.parent
+    / "processed"
+)
+
+# Create processed directory if it doesn't exist
+PROCESSED_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+
+# ============================================================
+# MAIN PREPROCESSING PIPELINE
+# ============================================================
+
 def main():
 
     print("=" * 60)
     print("CNN PREPROCESSING PIPELINE")
     print("=" * 60)
 
-    # ---------------------------------------------
-    # 1. Load raw dataset
-    # ---------------------------------------------
+    # --------------------------------------------------------
+    # Check raw dataset
+    # --------------------------------------------------------
 
-    raw_path = (
-       r"C:\Users\Shivananda\personal-finance-analytics\Personal_Finance\preprocessing\raw\budgetwise_finance_dataset.csv"
-    )
+    print("\nChecking dataset path...")
+
+    print("Dataset:")
+    print(RAW_DATA_PATH)
+
+    if not RAW_DATA_PATH.exists():
+
+        print("\nERROR: Dataset not found!")
+        print("Expected location:")
+        print(RAW_DATA_PATH)
+
+        print(
+            "\nMake sure budgetwise_finance_dataset.csv "
+            "exists inside:"
+        )
+
+        print(
+            PROJECT_ROOT
+            / "preprocessing"
+            / "raw"
+        )
+
+        sys.exit(1)
+
+    # --------------------------------------------------------
+    # 1. Load raw dataset
+    # --------------------------------------------------------
 
     df = data_cleaning.load_dataset(
-        raw_path
+        str(RAW_DATA_PATH)
     )
 
     print("\n1. Dataset loaded")
+    print("Shape:", df.shape)
 
-    # ---------------------------------------------
+    # --------------------------------------------------------
     # 2. Cleaning
-    # ---------------------------------------------
+    # --------------------------------------------------------
 
     df = data_cleaning.handle_missing_values(df)
 
@@ -44,11 +107,12 @@ def main():
 
     df = data_cleaning.remove_outliers(df)
 
-    print("2. Cleaning complete")
+    print("\n2. Cleaning complete")
+    print("Shape:", df.shape)
 
-    # ---------------------------------------------
+    # --------------------------------------------------------
     # 3. Standardisation
-    # ---------------------------------------------
+    # --------------------------------------------------------
 
     df = data_standardisation.standardise_category(df)
 
@@ -60,11 +124,12 @@ def main():
 
     df = data_standardisation.standardise_transaction_type(df)
 
-    print("3. Standardisation complete")
+    print("\n3. Standardisation complete")
+    print("Shape:", df.shape)
 
-    # ---------------------------------------------
-    # 4. Feature engineering
-    # ---------------------------------------------
+    # --------------------------------------------------------
+    # 4. Feature Engineering
+    # --------------------------------------------------------
 
     df = feature_extraction.extract_date_parts(df)
 
@@ -93,11 +158,12 @@ def main():
         .calculate_rolling_average(df)
     )
 
-    print("4. Feature engineering complete")
+    print("\n4. Feature engineering complete")
+    print("Shape:", df.shape)
 
-    # ---------------------------------------------
-    # 5. CNN sequence preparation
-    # ---------------------------------------------
+    # --------------------------------------------------------
+    # 5. CNN Sequence Preparation
+    # --------------------------------------------------------
 
     prep = CNNSequencePreparation(
         window_size=3
@@ -109,13 +175,12 @@ def main():
 
     print("\n5. Sequences created")
 
-    print("X:", X.shape)
+    print("X shape:", X.shape)
+    print("y shape:", y.shape)
 
-    print("y:", y.shape)
-
-    # ---------------------------------------------
-    # 6. Train-test split
-    # ---------------------------------------------
+    # --------------------------------------------------------
+    # 6. Chronological Train-Test Split
+    # --------------------------------------------------------
 
     (
         X_train,
@@ -127,9 +192,16 @@ def main():
         y
     )
 
-    # ---------------------------------------------
-    # 7. CNN reshape
-    # ---------------------------------------------
+    print("\n6. Train-test split complete")
+
+    print("X_train:", X_train.shape)
+    print("X_test :", X_test.shape)
+    print("y_train:", y_train.shape)
+    print("y_test :", y_test.shape)
+
+    # --------------------------------------------------------
+    # 7. CNN Reshape
+    # --------------------------------------------------------
 
     X_train = prep.reshape_for_cnn(
         X_train
@@ -139,70 +211,69 @@ def main():
         X_test
     )
 
-    print("\n6. CNN reshape complete")
+    print("\n7. CNN reshape complete")
 
     print("X_train:", X_train.shape)
-
     print("X_test :", X_test.shape)
 
-    print("y_train:", y_train.shape)
+    # --------------------------------------------------------
+    # 8. Save processed data
+    # --------------------------------------------------------
 
-    print("y_test :", y_test.shape)
-
-    # ---------------------------------------------
-    # 8. Save data
-    # ---------------------------------------------
-
-    processed_dir = "processed"
-
-    os.makedirs(
-        processed_dir,
-        exist_ok=True
-    )
+    print("\n8. Saving CNN preprocessing outputs...")
 
     np.save(
-        os.path.join(
-            processed_dir,
-            "X_train_cnn.npy"
-        ),
+        PROCESSED_DIR / "X_train_cnn.npy",
         X_train
     )
 
     np.save(
-        os.path.join(
-            processed_dir,
-            "X_test_cnn.npy"
-        ),
+        PROCESSED_DIR / "X_test_cnn.npy",
         X_test
     )
 
     np.save(
-        os.path.join(
-            processed_dir,
-            "y_train_cnn.npy"
-        ),
+        PROCESSED_DIR / "y_train_cnn.npy",
         y_train
     )
 
     np.save(
-        os.path.join(
-            processed_dir,
-            "y_test_cnn.npy"
-        ),
+        PROCESSED_DIR / "y_test_cnn.npy",
         y_test
     )
 
     df.to_csv(
-        os.path.join(
-            processed_dir,
-            "feature_engineered_dataset_cnn.csv"
-        ),
+        PROCESSED_DIR
+        / "feature_engineered_dataset_cnn.csv",
         index=False
     )
 
-    print("\nCNN preprocessing outputs saved.")
+    # --------------------------------------------------------
+    # Final report
+    # --------------------------------------------------------
 
+    print("\n" + "=" * 60)
+    print("CNN PREPROCESSING COMPLETED SUCCESSFULLY")
     print("=" * 60)
+
+    print("\nOutput directory:")
+    print(PROCESSED_DIR)
+
+    print("\nGenerated files:")
+
+    print("✓ X_train_cnn.npy")
+    print("✓ X_test_cnn.npy")
+    print("✓ y_train_cnn.npy")
+    print("✓ y_test_cnn.npy")
+    print("✓ feature_engineered_dataset_cnn.csv")
+
+    print("\nFinal shapes:")
+    print("X_train:", X_train.shape)
+    print("X_test :", X_test.shape)
+    print("y_train:", y_train.shape)
+    print("y_test :", y_test.shape)
+
+    print("\n" + "=" * 60)
 
 
 if __name__ == "__main__":
