@@ -1,6 +1,32 @@
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
+
+# =====================================================
+# Find Project Root
+# =====================================================
+
+def find_project_root():
+
+    current = Path(__file__).resolve()
+
+    for parent in current.parents:
+
+        if (
+            (parent / ".git").exists()
+            or (parent / "Personal_Finance").exists()
+        ):
+            return parent
+
+    raise FileNotFoundError(
+        "Could not locate project root."
+    )
+
+
+# =====================================================
+# CNN Sequence Preparation
+# =====================================================
 
 class CNNSequencePreparation:
 
@@ -8,9 +34,9 @@ class CNNSequencePreparation:
 
         self.window_size = window_size
 
-    # ---------------------------------------------
-    # Sort transactions
-    # ---------------------------------------------
+    # -------------------------------------------------
+    # Sort transactions by user and date
+    # -------------------------------------------------
 
     def sort_transactions(self, df):
 
@@ -25,9 +51,9 @@ class CNNSequencePreparation:
 
         return df
 
-    # ---------------------------------------------
+    # -------------------------------------------------
     # Create CNN sequences
-    # ---------------------------------------------
+    # -------------------------------------------------
 
     def create_sequences(self, df):
 
@@ -60,18 +86,23 @@ class CNNSequencePreparation:
                 ]
 
                 X.append(sequence)
-
                 y.append(target)
 
-        X = np.array(X, dtype=np.float32)
+        X = np.array(
+            X,
+            dtype=np.float32
+        )
 
-        y = np.array(y, dtype=np.float32)
+        y = np.array(
+            y,
+            dtype=np.float32
+        )
 
         return X, y
 
-    # ---------------------------------------------
-    # Chronological split
-    # ---------------------------------------------
+    # -------------------------------------------------
+    # Chronological Train-Test Split
+    # -------------------------------------------------
 
     def chronological_split(
         self,
@@ -85,11 +116,9 @@ class CNNSequencePreparation:
         )
 
         X_train = X[:split_index]
-
         X_test = X[split_index:]
 
         y_train = y[:split_index]
-
         y_test = y[split_index:]
 
         return (
@@ -99,9 +128,9 @@ class CNNSequencePreparation:
             y_test
         )
 
-    # ---------------------------------------------
-    # CNN input reshape
-    # ---------------------------------------------
+    # -------------------------------------------------
+    # CNN Input Reshape
+    # -------------------------------------------------
 
     def reshape_for_cnn(self, X):
 
@@ -112,11 +141,52 @@ class CNNSequencePreparation:
         )
 
 
+# =====================================================
+# Main
+# =====================================================
+
 def main():
 
-    df = pd.read_csv(
-        "processed/feature_engineered_dataset.csv"
+    print("=" * 60)
+    print("CNN SEQUENCE PREPARATION")
+    print("=" * 60)
+
+    # -------------------------------------------------
+    # Find project root
+    # -------------------------------------------------
+
+    project_root = find_project_root()
+
+    processed_dir = (
+        project_root / "processed"
     )
+
+    # -------------------------------------------------
+    # Input dataset
+    # -------------------------------------------------
+
+    input_path = (
+        processed_dir
+        / "feature_engineered_dataset_cnn.csv"
+    )
+
+    print("\nLoading dataset:")
+    print(input_path)
+
+    if not input_path.exists():
+
+        raise FileNotFoundError(
+            f"\nDataset not found:\n{input_path}\n"
+            "Run preprocessing.py first."
+        )
+
+    df = pd.read_csv(
+        input_path
+    )
+
+    # -------------------------------------------------
+    # Create sequences
+    # -------------------------------------------------
 
     prep = CNNSequencePreparation(
         window_size=3
@@ -129,12 +199,33 @@ def main():
     print("\nSequences created")
 
     print("X shape:", X.shape)
-
     print("y shape:", y.shape)
 
-    X_train, X_test, y_train, y_test = (
-        prep.chronological_split(X, y)
+    # -------------------------------------------------
+    # Train-test split
+    # -------------------------------------------------
+
+    (
+        X_train,
+        X_test,
+        y_train,
+        y_test
+    ) = prep.chronological_split(
+        X,
+        y
     )
+
+    print("\nTrain-test split")
+
+    print("X_train:", X_train.shape)
+    print("X_test :", X_test.shape)
+
+    print("y_train:", y_train.shape)
+    print("y_test :", y_test.shape)
+
+    # -------------------------------------------------
+    # CNN reshape
+    # -------------------------------------------------
 
     X_train = prep.reshape_for_cnn(
         X_train
@@ -147,35 +238,63 @@ def main():
     print("\nCNN data shapes")
 
     print("X_train:", X_train.shape)
-
     print("X_test :", X_test.shape)
-
     print("y_train:", y_train.shape)
-
     print("y_test :", y_test.shape)
 
+    # -------------------------------------------------
+    # Save CNN datasets
+    # -------------------------------------------------
+
     np.save(
-        "processed/X_train_cnn.npy",
+        processed_dir / "X_train_cnn.npy",
         X_train
     )
 
     np.save(
-        "processed/X_test_cnn.npy",
+        processed_dir / "X_test_cnn.npy",
         X_test
     )
 
     np.save(
-        "processed/y_train_cnn.npy",
+        processed_dir / "y_train_cnn.npy",
         y_train
     )
 
     np.save(
-        "processed/y_test_cnn.npy",
+        processed_dir / "y_test_cnn.npy",
         y_test
     )
 
-    print("\nCNN preprocessing completed.")
+    print("\nCNN sequence data saved successfully.")
 
+    print("\nSaved files:")
+
+    print(
+        processed_dir / "X_train_cnn.npy"
+    )
+
+    print(
+        processed_dir / "X_test_cnn.npy"
+    )
+
+    print(
+        processed_dir / "y_train_cnn.npy"
+    )
+
+    print(
+        processed_dir / "y_test_cnn.npy"
+    )
+
+    print("\n" + "=" * 60)
+    print("SEQUENCE PREPARATION COMPLETED")
+    print("=" * 60)
+
+
+# =====================================================
+# Run
+# =====================================================
 
 if __name__ == "__main__":
+
     main()
