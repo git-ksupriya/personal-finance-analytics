@@ -1,5 +1,26 @@
 import pandas as pd
+from pathlib import Path
 
+
+# ============================================================
+# PATH CONFIGURATION
+# ============================================================
+
+# Current directory:
+# Personal_Finance/ml/models/cnn/preprocessing/
+
+CURRENT_DIR = Path(__file__).resolve().parent
+
+# CNN preprocessing directory
+PROCESSED_DIR = CURRENT_DIR.parent / "processed"
+
+# Make sure processed directory exists
+PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ============================================================
+# EXTRACT DATE FEATURES
+# ============================================================
 
 def extract_date_parts(df):
 
@@ -10,6 +31,10 @@ def extract_date_parts(df):
 
     return df
 
+
+# ============================================================
+# DAYS BETWEEN TRANSACTIONS
+# ============================================================
 
 def calculate_days_between_transactions(df):
 
@@ -23,6 +48,7 @@ def calculate_days_between_transactions(df):
         .dt.days
     )
 
+    # First transaction of each user has no previous transaction
     df["days_since_last_txn"] = (
         df["days_since_last_txn"]
         .fillna(0)
@@ -30,6 +56,10 @@ def calculate_days_between_transactions(df):
 
     return df
 
+
+# ============================================================
+# MONTHLY SPENDING
+# ============================================================
 
 def calculate_monthly_spending(df):
 
@@ -39,13 +69,16 @@ def calculate_monthly_spending(df):
         .astype(str)
     )
 
+    # Consider only expenses
     expense = df[
         df["transaction_type"] == "Expense"
     ]
 
     monthly_total = (
         expense
-        .groupby(["user_id", "year_month"])["amount"]
+        .groupby(
+            ["user_id", "year_month"]
+        )["amount"]
         .sum()
         .reset_index()
         .rename(
@@ -69,8 +102,13 @@ def calculate_monthly_spending(df):
     return df
 
 
+# ============================================================
+# CATEGORY-WISE SPENDING
+# ============================================================
+
 def calculate_category_spending(df):
 
+    # Consider only expenses
     expense = df[
         df["transaction_type"] == "Expense"
     ]
@@ -78,7 +116,11 @@ def calculate_category_spending(df):
     category_monthly = (
         expense
         .groupby(
-            ["user_id", "year_month", "category"]
+            [
+                "user_id",
+                "year_month",
+                "category"
+            ]
         )["amount"]
         .sum()
         .reset_index()
@@ -107,6 +149,10 @@ def calculate_category_spending(df):
     return df
 
 
+# ============================================================
+# TRANSACTION FREQUENCY
+# ============================================================
+
 def calculate_transaction_frequency(df):
 
     df["user_txn_frequency"] = (
@@ -116,6 +162,10 @@ def calculate_transaction_frequency(df):
 
     return df
 
+
+# ============================================================
+# ROLLING AVERAGE
+# ============================================================
 
 def calculate_rolling_average(df, window=3):
 
@@ -137,16 +187,36 @@ def calculate_rolling_average(df, window=3):
     return df
 
 
+# ============================================================
+# MAIN
+# ============================================================
+
 def main():
 
-    df = pd.read_csv(
-        "processed/standardised_dataset.csv"
+    print("=" * 60)
+    print("CNN FEATURE EXTRACTION")
+    print("=" * 60)
+
+    # Input dataset
+    input_path = (
+        PROCESSED_DIR
+        / "standardised_dataset.csv"
     )
 
+    print("\nReading:")
+    print(input_path)
+
+    df = pd.read_csv(input_path)
+
+    # Convert date to datetime
     df["date"] = pd.to_datetime(
-        df["date"]
+        df["date"],
+        errors="coerce"
     )
 
+    print("\nInitial shape:", df.shape)
+
+    # Feature extraction pipeline
     df = extract_date_parts(df)
 
     df = calculate_days_between_transactions(df)
@@ -159,12 +229,21 @@ def main():
 
     df = calculate_rolling_average(df)
 
+    # Output path
+    output_path = (
+        PROCESSED_DIR
+        / "feature_engineered_dataset.csv"
+    )
+
     df.to_csv(
-        "processed/feature_engineered_dataset.csv",
+        output_path,
         index=False
     )
 
-    print("Feature engineered dataset saved.")
+    print("\nFinal shape:", df.shape)
+
+    print("\nFeature engineered dataset saved to:")
+    print(output_path)
 
 
 if __name__ == "__main__":
