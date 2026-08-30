@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <title>Top Transactions</title>
+
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<header>
+    <h1>Top 5 Transactions</h1>
+</header>
+
+<nav>
+    <a href="/">Home</a>
+</nav>
+
+<div class="container">
+
+    <div class="card">
+
+        <h2>Highest Transaction Amounts</h2>
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Transaction ID</th>
+                    <th>User ID</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                    <th>Type</th>
+                    <th>Date</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+
+            <tbody id="topTransactionsTable">
+                <tr>
+                    <td colspan="7">Loading...</td>
+                </tr>
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+<script src="/script.js"></script>
+
+<script>
+    loadTopTransactions();
+</script>
+
+</body>
+</html>

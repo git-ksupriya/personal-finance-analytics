@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <title>Category Summary</title>
+
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<header>
+    <h1>Category Summary</h1>
+</header>
+
+<nav>
+    <a href="/">Home</a>
+</nav>
+
+<div class="container">
+
+    <div class="card">
+
+        <h2>Transactions Grouped by Category</h2>
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Transaction Count</th>
+                    <th>Total Amount</th>
+                </tr>
+            </thead>
+
+            <tbody id="categorySummaryTable">
+                <tr>
+                    <td colspan="3">Loading...</td>
+                </tr>
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+<script src="/script.js"></script>
+
+<script>
+    loadCategorySummary();
+</script>
+
+</body>
+</html>
