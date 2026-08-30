@@ -4,8 +4,9 @@ import numpy as np
 
 class SequencePreparation:
 
-    def __init__(self, window_size=5):
+    def __init__(self, window_size=10, future_steps=7):
         self.window_size = window_size
+        self.future_steps = future_steps
 
     # -------------------------------------------------
     # Sort transactions by user and date
@@ -26,25 +27,27 @@ class SequencePreparation:
         return df.groupby("user_id")
 
     # -------------------------------------------------
-    # Create sliding window sequences
+    # Create sliding window sequences for multi-step prediction
     # -------------------------------------------------
     def create_sequences(self, grouped):
 
         X = []
         y = []
 
+        total_required = self.window_size + self.future_steps
+
         for user_id, user_data in grouped:
 
             amounts = user_data["amount"].values
 
-            if len(amounts) <= self.window_size:
+            if len(amounts) < total_required:
                 continue
 
-            for i in range(len(amounts) - self.window_size):
+            for i in range(len(amounts) - total_required + 1):
 
-                X.append(amounts[i:i + self.window_size])
+                X.append(amounts[i : i + self.window_size])
 
-                y.append(amounts[i + self.window_size])
+                y.append(amounts[i + self.window_size : i + total_required])
 
         return np.array(X), np.array(y)
 
@@ -64,7 +67,35 @@ class SequencePreparation:
         return X_train, X_test, y_train, y_test
 
     # -------------------------------------------------
-    # Reshape for LSTM
+    # Scale sequences using MinMaxScaler
+    # -------------------------------------------------
+    def fit_transform_sequences(self, X_train, y_train, X_test, y_test):
+        from sklearn.preprocessing import MinMaxScaler
+        self.scaler = MinMaxScaler(feature_range=(0, 1))
+
+        # Reshape to 2D for scaler fitting: fit on y_train (spending amounts)
+        y_train_flat = y_train.reshape(-1, 1)
+        self.scaler.fit(y_train_flat)
+
+        X_train_scaled = self.scaler.transform(X_train.reshape(-1, 1)).reshape(X_train.shape)
+        X_test_scaled = self.scaler.transform(X_test.reshape(-1, 1)).reshape(X_test.shape)
+
+        y_train_scaled = self.scaler.transform(y_train_flat).reshape(y_train.shape)
+        y_test_scaled = self.scaler.transform(y_test.reshape(-1, 1)).reshape(y_test.shape)
+
+        return X_train_scaled, X_test_scaled, y_train_scaled, y_test_scaled
+
+    # -------------------------------------------------
+    # Save Scaler
+    # -------------------------------------------------
+    def save_scaler(self, filepath):
+        import joblib
+        if hasattr(self, 'scaler'):
+            joblib.dump(self.scaler, filepath)
+            print(f"Scaler saved to {filepath}")
+
+    # -------------------------------------------------
+    # Reshape for LSTM / RNN
     # -------------------------------------------------
     def reshape_lstm(self, X):
 

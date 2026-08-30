@@ -3,17 +3,14 @@ import os, numpy as np
 
 def main():
     # 1. Load raw dataset
-    file_path = r".\\raw\\budgetwise_finance_dataset.csv"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, "raw", "budgetwise_finance_dataset.csv")
     
     df = data_cleaning.load_dataset(file_path)
 
     # 2. Cleaning
     df = data_cleaning.handle_missing_values(df)
     df = data_cleaning.remove_duplicates(df)
-
-    #currently these are for diagnostic details, not used for modifying df
-    #data_cleaning.validate_transaction_ids(df)
-    #data_cleaning.validate_user_ids(df)
 
     df = data_cleaning.clean_amount_column(df)
     df = data_cleaning.validate_amounts(df)
@@ -43,8 +40,8 @@ def main():
     df = Feature_Extraction.calculate_rolling_average(df)
     print("3. Feature extraction complete:", df.shape)
 
-    # 5. Sequence preparation for LSTM
-    prep = sequence_preparation.SequencePreparation(window_size=3)
+    # 5. Sequence preparation for 7-day multi-step LSTM / RNN forecasting
+    prep = sequence_preparation.SequencePreparation(window_size=10, future_steps=7)
 
     df = prep.sort_transactions(df)
 
@@ -58,36 +55,45 @@ def main():
 
     X_train, X_test, y_train, y_test = prep.chronological_split(X, y)
 
-    print("5. Train/test split complete")
-    print("   X_train:", getattr(X_train, "shape", None))
-    print("   X_test :", getattr(X_test, "shape", None))
-    print("   y_train:", getattr(y_train, "shape", None))
-    print("   y_test :", getattr(y_test, "shape", None))
+    # Scale sequences using MinMaxScaler fitted on train data
+    X_train_scaled, X_test_scaled, y_train_scaled, y_test_scaled = prep.fit_transform_sequences(
+        X_train, y_train, X_test, y_test
+    )
 
-    X_train = prep.reshape_lstm(X_train)
-    X_test = prep.reshape_lstm(X_test)
+    print("5. Train/test split and scaling complete")
+    print("   X_train:", getattr(X_train_scaled, "shape", None))
+    print("   X_test :", getattr(X_test_scaled, "shape", None))
 
-    print("6. LSTM reshape complete")
-    print("   X_train:", X_train.shape)
-    print("   X_test :", X_test.shape)
+    X_train_final = prep.reshape_lstm(X_train_scaled)
+    X_test_final = prep.reshape_lstm(X_test_scaled)
+
+    print("6. Reshape complete")
+    print("   X_train_final:", X_train_final.shape)
+    print("   X_test_final :", X_test_final.shape)
 
     # 6. Autoencoder data
     auto_data = prep.prepare_autoencoder(df)
     print("7. Autoencoder preparation complete")
-    print("   type :", type(auto_data))
-    print("   shape:", getattr(auto_data, "shape", None))
 
     # 7. Save outputs
-    processed_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "processed")
+    processed_dir = os.path.join(base_dir, "processed")
+    ml_models_dir = os.path.abspath(os.path.join(base_dir, "..", "ml", "models"))
 
     os.makedirs(processed_dir, exist_ok=True)
+    os.makedirs(ml_models_dir, exist_ok=True)
 
-    np.save(os.path.join(processed_dir, "X_train.npy"), X_train)
-    np.save(os.path.join(processed_dir, "X_test.npy"), X_test)
-    np.save(os.path.join(processed_dir, "y_train.npy"), y_train)
-    np.save(os.path.join(processed_dir, "y_test.npy"), y_test)
+    np.save(os.path.join(processed_dir, "X_train.npy"), X_train_final)
+    np.save(os.path.join(processed_dir, "X_test.npy"), X_test_final)
+    np.save(os.path.join(processed_dir, "y_train.npy"), y_train_scaled)
+    np.save(os.path.join(processed_dir, "y_test.npy"), y_test_scaled)
+
+    # Save raw unscaled targets for easy evaluation comparison
+    np.save(os.path.join(processed_dir, "y_train_raw.npy"), y_train)
+    np.save(os.path.join(processed_dir, "y_test_raw.npy"), y_test)
+
+    # Save scaler in both processed and ml/models
+    prep.save_scaler(os.path.join(processed_dir, "scaler.pkl"))
+    prep.save_scaler(os.path.join(ml_models_dir, "scaler.pkl"))
 
     df.to_csv(os.path.join(processed_dir, "feature_engineered_dataset.csv"), index=False)
 
