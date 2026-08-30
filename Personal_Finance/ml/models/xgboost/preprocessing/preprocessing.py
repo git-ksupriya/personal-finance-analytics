@@ -1,5 +1,11 @@
 import os
+import sys
 import pandas as pd
+
+# Allow importing files from this folder
+sys.path.append(
+    os.path.dirname(os.path.abspath(__file__))
+)
 
 import data_cleaning
 import data_standardisation
@@ -12,49 +18,43 @@ def main():
     print("XGBOOST PREPROCESSING PIPELINE")
     print("=" * 60)
 
-    # -------------------------------------------------
+    # --------------------------------------------------
     # Find project root
-    # -------------------------------------------------
+    # --------------------------------------------------
 
-    BASE_DIR = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../../.."
-        )
+    current_dir = os.path.dirname(
+        os.path.abspath(__file__)
     )
 
+    project_root = os.path.abspath(
+        os.path.join(current_dir, "../../../..")
+    )
+
+    # --------------------------------------------------
+    # Dataset path
+    # --------------------------------------------------
+
     raw_path = os.path.join(
-        BASE_DIR,
+        project_root,
         "preprocessing",
         "raw",
         "budgetwise_finance_dataset.csv"
     )
 
-    output_dir = os.path.join(
-        os.path.dirname(__file__),
-        "processed"
-    )
+    print("\nDataset:")
+    print(raw_path)
 
-    os.makedirs(
-        output_dir,
-        exist_ok=True
-    )
-
-    # -------------------------------------------------
+    # --------------------------------------------------
     # 1. Load
-    # -------------------------------------------------
+    # --------------------------------------------------
 
     df = data_cleaning.load_dataset(
         raw_path
     )
 
-    original_rows = len(df)
-
-    print("\n1. Dataset loaded")
-
-    # -------------------------------------------------
+    # --------------------------------------------------
     # 2. Cleaning
-    # -------------------------------------------------
+    # --------------------------------------------------
 
     df = data_cleaning.handle_missing_values(df)
 
@@ -68,13 +68,12 @@ def main():
 
     df = data_cleaning.remove_outliers(df)
 
-    print(
-        f"2. Cleaning complete: {df.shape}"
-    )
+    print("\n1. Cleaning complete")
+    print("Shape:", df.shape)
 
-    # -------------------------------------------------
+    # --------------------------------------------------
     # 3. Standardisation
-    # -------------------------------------------------
+    # --------------------------------------------------
 
     df = data_standardisation.standardise_category(df)
 
@@ -86,108 +85,131 @@ def main():
 
     df = data_standardisation.standardise_transaction_type(df)
 
-    print(
-        f"3. Standardisation complete: {df.shape}"
-    )
+    print("\n2. Standardisation complete")
+    print("Shape:", df.shape)
 
-    # -------------------------------------------------
+    # --------------------------------------------------
     # 4. Feature Engineering
-    # -------------------------------------------------
+    # --------------------------------------------------
 
-    df = feature_extraction.extract_date_features(df)
-
-    df = feature_extraction.calculate_days_since_last_transaction(df)
-
-    df = feature_extraction.calculate_monthly_spending(df)
-
-    df = feature_extraction.calculate_category_spending(df)
-
-    df = feature_extraction.calculate_transaction_frequency(df)
-
-    df = feature_extraction.calculate_rolling_average(df)
-
-    df = feature_extraction.calculate_user_average(df)
-
-    df = feature_extraction.calculate_user_max(df)
-
-    df = feature_extraction.calculate_spending_deviation(df)
-
-    print(
-        f"4. Feature engineering complete: {df.shape}"
+    df = feature_extraction.prepare_xgboost_features(
+        df
     )
 
-    # -------------------------------------------------
-    # 5. Remove columns that XGBoost cannot directly use
-    # -------------------------------------------------
-
-    df = df.drop(
-        columns=[
-            "date",
-            "notes"
-        ],
-        errors="ignore"
+    # Remove rows where lag/target cannot be calculated
+    df = df.dropna(
+        subset=[
+            "lag_1",
+            "lag_2",
+            "lag_3",
+            "rolling_mean_3",
+            "target"
+        ]
     )
 
-    # -------------------------------------------------
-    # 6. Convert categorical columns
-    # -------------------------------------------------
+    print("\n3. Feature extraction complete")
+    print("Shape:", df.shape)
 
-    categorical_columns = [
-        "transaction_type",
-        "category",
-        "payment_mode",
-        "location"
+    # --------------------------------------------------
+    # Select XGBoost features
+    # --------------------------------------------------
+
+    feature_columns = [
+
+        "amount",
+
+        "lag_1",
+        "lag_2",
+        "lag_3",
+
+        "rolling_mean_3",
+
+        "year",
+        "month",
+        "day",
+        "weekday",
+
+        "user_transaction_count"
     ]
 
-    df = pd.get_dummies(
-        df,
-        columns=categorical_columns,
-        drop_first=False
+    X = df[feature_columns]
+
+    y = df["target"]
+
+    # --------------------------------------------------
+    # Chronological split
+    # --------------------------------------------------
+
+    split_index = int(len(df) * 0.8)
+
+    X_train = X.iloc[:split_index]
+    X_test = X.iloc[split_index:]
+
+    y_train = y.iloc[:split_index]
+    y_test = y.iloc[split_index:]
+
+    # --------------------------------------------------
+    # Save processed data
+    # --------------------------------------------------
+
+    processed_dir = os.path.join(
+        current_dir,
+        "processed"
     )
 
-    # Convert boolean columns to integers
-    bool_columns = df.select_dtypes(
-        include="bool"
-    ).columns
-
-    df[bool_columns] = df[
-        bool_columns
-    ].astype(int)
-
-    # -------------------------------------------------
-    # 7. Handle remaining missing values
-    # -------------------------------------------------
-
-    df = df.fillna(0)
-
-    # -------------------------------------------------
-    # 8. Save
-    # -------------------------------------------------
-
-    output_path = os.path.join(
-        output_dir,
-        "xgboost_features.csv"
+    os.makedirs(
+        processed_dir,
+        exist_ok=True
     )
 
-    df.to_csv(
-        output_path,
+    X_train.to_csv(
+        os.path.join(
+            processed_dir,
+            "X_train.csv"
+        ),
         index=False
     )
 
-    print("\n" + "=" * 60)
-    print("XGBOOST PREPROCESSING COMPLETE")
-    print("=" * 60)
-
-    print(f"Original rows : {original_rows}")
-    print(f"Final rows    : {len(df)}")
-    print(f"Final columns : {len(df.columns)}")
-
-    print(
-        f"\nSaved to:\n{output_path}"
+    X_test.to_csv(
+        os.path.join(
+            processed_dir,
+            "X_test.csv"
+        ),
+        index=False
     )
 
-    print("\nFeature columns:")
-    print(df.columns.tolist())
+    y_train.to_csv(
+        os.path.join(
+            processed_dir,
+            "y_train.csv"
+        ),
+        index=False
+    )
+
+    y_test.to_csv(
+        os.path.join(
+            processed_dir,
+            "y_test.csv"
+        ),
+        index=False
+    )
+
+    df.to_csv(
+        os.path.join(
+            processed_dir,
+            "xgboost_dataset.csv"
+        ),
+        index=False
+    )
+
+    print("\n4. Train/Test split complete")
+
+    print("X_train:", X_train.shape)
+    print("X_test :", X_test.shape)
+    print("y_train:", y_train.shape)
+    print("y_test :", y_test.shape)
+
+    print("\nXGBoost preprocessing completed successfully.")
 
 
 if __name__ == "__main__":
