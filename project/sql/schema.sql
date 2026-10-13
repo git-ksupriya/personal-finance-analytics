@@ -92,7 +92,7 @@ CREATE TABLE model_runs (
 CREATE TABLE anomalies (
     anomaly_id SERIAL PRIMARY KEY,
     trans_num VARCHAR(64) NOT NULL REFERENCES transactions(trans_num) ON DELETE CASCADE,
-    score NUMERIC(10, 6) NOT NULL,
+    score NUMERIC(16, 6) NOT NULL,
     method VARCHAR(64) NOT NULL,
     flagged BOOLEAN NOT NULL,
     run_id VARCHAR(64) NOT NULL
