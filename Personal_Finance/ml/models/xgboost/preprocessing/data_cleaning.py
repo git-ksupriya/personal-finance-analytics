@@ -96,3 +96,12 @@ def remove_outliers(df):
     df = df[df["amount"] < 1000000]
 
     return df
+df = remove_duplicates(df)
+df = clean_amount_column(df)
+df = validate_amounts(df)
+df = validate_dates(df)
+df = remove_outliers(df)
+
+df.to_csv("cleaned_data.csv", index=False)
+
+print("Cleaned dataset saved successfully!")
