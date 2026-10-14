@@ -1,3 +1,5 @@
+from database import save_model_performance
+from save_cnn_results import save_total_predictions
 import os
 import numpy as np
 import pandas as pd
@@ -313,7 +315,19 @@ print(f"MAE  : {mae:.2f}")
 print(f"RMSE : {rmse:.2f}")
 print(f"R²   : {r2:.4f}")
 
+# Save model performance to PostgreSQL
 
+model_id = save_model_performance(
+    model_name="CNN Total Spending",
+    mae=mae,
+    rmse=rmse,
+    r2=r2,
+    forecast_days=FORECAST_DAYS,
+    window_size=WINDOW_SIZE
+)
+
+print("\nModel performance saved to PostgreSQL!")
+print("Model ID:", model_id)
 # ============================================================
 # SAVE MODEL
 # ============================================================
@@ -374,5 +388,20 @@ print("\nOverall Metrics")
 print(f"MAE  : {mae:.2f}")
 print(f"RMSE : {rmse:.2f}")
 print(f"R²   : {r2:.4f}")
+
+# ============================================================
+# SAVE FIRST 7-DAY FORECAST TO POSTGRESQL
+# ============================================================
+
+actual_values = y_test_original[0].reshape(-1)
+predicted_values = y_pred_original[0].reshape(-1)
+
+save_total_predictions(
+    model_id=model_id,
+    actual_values=actual_values,
+    predicted_values=predicted_values
+)
+
+print("\nSeven-day total-spending predictions saved to PostgreSQL!")
 
 print("\nTraining completed successfully.")
