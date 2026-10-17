@@ -92,3 +92,24 @@ Fill domain database tables (`users`, `categories`, `payment_modes`, `locations`
 ```bash
 python ml/db_populate.py
 ```
+
+## Seven-Day Category Seasonal-Naive Baseline
+
+Run these commands from the `Personal_Finance` directory after the standardized dataset is available at `preprocessing/processed/standardised_dataset.csv`:
+
+```bash
+python -m ml.seasonal_naives.preprocessing.feature_extraction
+python -m ml.seasonal_naives.preprocessing.sequence_preparation
+python -m ml.seasonal_naives.train_seasonal_naive
+python -m ml.seasonal_naives.evaluate_seasonal_naive
+```
+
+The preprocessing uses the category LSTM's expense filtering, daily aggregation, zero-filled dates, and calendar-day series. Sequence preparation reuses the LSTM's per-user/category 80/20 chronological split, 90-day history, and seven-day test-window origins. It also creates an overall daily total per user using the same daily split and window protocol. For each test window, the seasonal-naive rule repeats the corresponding values from the most recent complete seven-day period. This is a deterministic baseline and has no learned weights; the training step records its configuration and produces test forecasts.
+
+Generated daily series, sequence arrays, and metadata are saved under `ml/seasonal_naives/preprocessed/`. These reproducible, data-derived files are git-ignored. The baseline configuration, test predictions, and raw-currency overall-total and per-category MAE, RMSE, and R² metrics are saved under `ml/seasonal_naives/models/` as `seasonal_naive_model.json`, `test_predictions.csv`, and `seasonal_naive_metrics.json`, respectively. The large prediction CSV is also git-ignored; the compact metrics and configuration files remain in the repository.
+
+Run baseline tests from `Personal_Finance` with:
+
+```bash
+python -m unittest ml.seasonal_naives.test_seasonal_naive -v
+```
