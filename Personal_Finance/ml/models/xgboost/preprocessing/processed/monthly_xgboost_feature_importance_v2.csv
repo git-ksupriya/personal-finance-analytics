@@ -1,0 +1,11 @@
+feature,importance
+expense_mean_3,0.10990291
+target_month_sin,0.10835357
+target_month_cos,0.10772406
+expense_mean_6,0.105787255
+expense_lag_1,0.09895013
+expense_lag_3,0.09761773
+user_expense_std,0.095842585
+user_expense_mean,0.09528574
+expense_lag_2,0.09120022
+transaction_count_lag_1,0.089335784
