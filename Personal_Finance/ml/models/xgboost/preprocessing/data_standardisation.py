@@ -1,169 +1,48 @@
 import pandas as pd
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+PROCESSED_DIR = BASE_DIR / "processed"
 
 
-CATEGORY_MAPPING = {
+def main():
+    input_path = PROCESSED_DIR / "cleaned_transactions.csv"
 
-    "FOOD": "Food",
-    "food": "Food",
-    "Foods": "Food",
-    "Foodd": "Food",
-    "Fod": "Food",
+    if not input_path.exists():
+        raise FileNotFoundError(
+            "Run data_cleaning.py first."
+        )
 
-    "rent": "Rent",
-    "RENT": "Rent",
-    "Rentt": "Rent",
-    "Rnt": "Rent",
+    df = pd.read_csv(input_path, parse_dates=["date"])
 
-    "education": "Education",
-    "Educaton": "Education",
-    "EDU": "Education",
-
-    "Utilties": "Utilities",
-    "Utility": "Utilities",
-    "Utlities": "Utilities",
-    "utilities": "Utilities",
-
-    "entertainment": "Entertainment",
-    "Entertain": "Entertainment",
-    "Entrtnmnt": "Entertainment",
-
-    "HEALTH": "Health",
-    "Helth": "Health",
-    "health": "Health",
-
-    "Travl": "Travel",
-    "Traval": "Travel",
-    "TRAVEL": "Travel",
-    "travel": "Travel",
-
-    "Saving": "Savings",
-    "savings": "Savings",
-    "SAVINGS": "Savings",
-
-    "Other": "Others",
-    "OTHERS": "Others",
-    "others": "Others",
-    "Misc": "Others"
-}
-
-
-LOCATION_MAPPING = {
-
-    "BAN": "Bangalore",
-    "BANGALORE": "Bangalore",
-    "bangalore": "Bangalore",
-
-    "CHENNAI": "Chennai",
-    "CHE": "Chennai",
-    "chennai": "Chennai",
-
-    "PUNE": "Pune",
-    "pune": "Pune",
-    "PUN": "Pune",
-
-    "LUC": "Lucknow",
-    "lucknow": "Lucknow",
-    "LUCKNOW": "Lucknow",
-
-    "hyderabad": "Hyderabad",
-    "HYDERABAD": "Hyderabad",
-    "HYD": "Hyderabad",
-
-    "JAI": "Jaipur",
-    "JAIPUR": "Jaipur",
-    "jaipur": "Jaipur",
-
-    "KOL": "Kolkata",
-    "KOLKATA": "Kolkata",
-    "kolkata": "Kolkata",
-
-    "AHM": "Ahmedabad",
-    "AHMEDABAD": "Ahmedabad",
-    "ahmedabad": "Ahmedabad",
-
-    "DELHI": "Delhi",
-    "DEL": "Delhi",
-    "delhi": "Delhi",
-
-    "MUM": "Mumbai",
-    "mumbai": "Mumbai",
-    "MUMBAI": "Mumbai"
-}
-
-
-PAYMENT_MAPPING = {
-
-    "card": "Card",
-    "CRD": "Card",
-    "Crd": "Card",
-    "CARD": "Card",
-
-    "Csh": "Cash",
-    "csh": "Cash",
-    "cash": "Cash",
-    "CASH": "Cash",
-
-    "upi": "Upi",
-    "UPI": "Upi",
-    "UPi": "Upi",
-
-    "Bank Transfer": "Bank_Transfer",
-    "bank transfer": "Bank_Transfer",
-    "BankTransfer": "Bank_Transfer",
-    "Bank Transfr": "Bank_Transfer"
-}
-
-
-def standardise_category(df):
-
-    df["category"] = df["category"].fillna("Others")
-
-    df["category"] = df["category"].replace(
-        CATEGORY_MAPPING
+    df["amount"] = pd.to_numeric(
+        df["amount"], errors="coerce"
     )
 
-    return df
+    df = df.dropna(
+        subset=["user_id", "date", "amount"]
+    ).copy()
 
+    for col in [
+        "transaction_type",
+        "category",
+        "payment_mode",
+        "location"
+    ]:
+        df[col] = df[col].fillna("Unknown").astype(str)
 
-def standardise_locations(df):
-
-    df["location"] = df["location"].fillna("Unknown")
-
-    df["location"] = df["location"].replace(
-        LOCATION_MAPPING
+    df = df.sort_values(
+        ["user_id", "date", "transaction_id"],
+        kind="stable"
     )
 
-    return df
+    output_path = PROCESSED_DIR / "standardized_transactions.csv"
+    df.to_csv(output_path, index=False)
+
+    print("Data preparation completed.")
+    print("Shape:", df.shape)
+    print("Saved to:", output_path)
 
 
-def standardise_payment_modes(df):
-
-    df["payment_mode"] = df["payment_mode"].fillna("Unknown")
-
-    df["payment_mode"] = df["payment_mode"].replace(
-        PAYMENT_MAPPING
-    )
-
-    return df
-
-
-def standardise_dates(df):
-
-    df["date"] = pd.to_datetime(
-        df["date"],
-        errors="coerce"
-    )
-
-    return df
-
-
-def standardise_transaction_type(df):
-
-    df["transaction_type"] = (
-        df["transaction_type"]
-        .astype(str)
-        .str.strip()
-        .str.title()
-    )
-
-    return df
+if __name__ == "__main__":
+    main()
