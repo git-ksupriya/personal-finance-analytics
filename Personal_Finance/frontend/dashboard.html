@@ -21,15 +21,22 @@
             <p>Budget: <strong id="overall-budget">—</strong></p>
         </article>
         <article class="card metric-card">
+            <h2>Monthly cash flow</h2>
+            <p>Recurring income: <strong id="recurring-income">—</strong></p>
+            <p>Recurring expenditure: <strong id="recurring-expenditure">—</strong></p>
+            <p>Total spendable: <strong id="total-spendable">—</strong></p>
+            <p>After obligations: <strong id="net-spendable">—</strong></p>
+        </article>
+        <article class="card metric-card">
             <h2>Projected month-end</h2>
             <p class="metric" id="projected-spending">—</p>
             <p>Budget: <strong id="projected-budget">—</strong></p>
             <small id="projection-note" class="muted">Projection requires sufficient recent history.</small>
         </article>
         <article class="card metric-card">
-            <h2>Overall LSTM · next 7 transaction steps</h2>
+            <h2>Overall LSTM · next 7 calendar months</h2>
             <div id="overall-forecast" class="forecast-values">Waiting for data…</div>
-            <small class="muted">The trained overall model predicts transaction amounts, not calendar-day or monthly totals.</small>
+            <small class="muted">Each value is predicted total expense for the labeled calendar month.</small>
         </article>
         <article class="card chart-card">
             <h2>Category spending · last six months</h2>
@@ -40,12 +47,18 @@
         </article>
         <article class="card category-card">
             <h2>Category projections vs budget</h2>
-            <p class="muted">Month-end projection extends the next-seven-day forecast's average daily pace over remaining days.</p>
-            <div class="table-scroll"><table><thead><tr><th>Category</th><th>Actual</th><th>Projected</th><th>Budget</th></tr></thead><tbody id="category-projections"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+            <p class="muted">Predictions are monthly category totals for the labeled calendar month; they are not daily rates.</p>
+            <div class="table-scroll"><table><thead><tr><th>Category</th><th>Actual this month</th><th>Predicted month total</th><th>Budget</th></tr></thead><tbody id="category-projections"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
         </article>
         <article class="card alerts-card">
             <h2>Alerts</h2>
             <div id="alerts-list" class="alerts-list"><p>Loading…</p></div>
+            <h2>Unusual spending</h2>
+            <div id="anomalies-list" class="alerts-list"><p>Loading…</p></div>
+        </article>
+        <article class="card recurring-card">
+            <h2>Recurring items</h2>
+            <div id="recurring-list"><p>Loading…</p></div>
         </article>
     </section>
     <section class="lower-grid">
@@ -53,16 +66,22 @@
             <h2>Enter a transaction</h2>
             <form id="transaction-form" class="transaction-form">
                 <label>Date <input type="date" name="date" required></label>
+                <label>Type
+                    <select name="transaction_type" id="transaction-type" required>
+                        <option value="Expense">Expense</option>
+                        <option value="Income">Income</option>
+                    </select>
+                </label>
                 <label>Category <select name="category" id="transaction-category" required></select></label>
                 <label>Amount (INR) <input type="number" name="amount" min="0.01" step="0.01" required></label>
-                <label class="wide">Description <input name="description" maxlength="500" placeholder="What was this expense?"></label>
+                <label class="wide">Description <input name="description" maxlength="500" placeholder="What was this transaction?"></label>
                 <p id="transaction-message" class="message wide" role="status"></p>
-                <button type="submit">Add expense</button>
+                <button type="submit" id="transaction-submit">Add transaction</button>
             </form>
         </article>
         <article class="card history-card">
             <h2>Past transactions</h2>
-            <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th></tr></thead><tbody id="transactions-list"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+            <div class="table-scroll"><table><thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Category</th><th>Amount</th></tr></thead><tbody id="transactions-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
         </article>
     </section>
 </main>
