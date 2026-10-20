@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics & Forecasting Dashboard - Personal Finance Analytics</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .user-tag {
+            background: #333;
+            color: #fff;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            margin-left: 10px;
+        }
+        .placeholder-badge {
+            display: inline-block;
+            background: #ffc107;
+            color: #212529;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+            letter-spacing: 0.5px;
+        }
+        .daily-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .daily-pill {
+            background: #f1f3f5;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="dashboard-header" style="max-width: 1200px; margin: 0 auto;">
+        <div>
+            <h1 style="font-size: 24px; margin: 0;">Personal Finance Analytics</h1>
+            <p style="margin: 5px 0 0 0; font-size: 14px; opacity: 0.9;">AI Spending Forecasts & Budget Tracking</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span id="userGreeting" style="font-size: 14px; font-weight: bold;">Loading user...</span>
+            <button type="button" class="btn-secondary" style="padding: 6px 14px; font-size: 13px;" onclick="handleLogout()">Sign Out</button>
+        </div>
+    </div>
+</header>
+
+<nav>
+    <a href="/pages/analytics.html" style="color: #007bff;">Dashboard</a>
+    <a href="/pages/categories.html">Categories</a>
+    <a href="/pages/category-summary.html">Category Summary</a>
+    <a href="/pages/top-transactions.html">Top Transactions</a>
+    <a href="/pages/transaction-details.html">Transaction Details</a>
+    <a href="/pages/user-spending.html">User Spending</a>
+</nav>
+
+<div class="container">
+    <!-- Top Row: Charts -->
+    <div class="grid-2col">
+        <!-- Chart 1: Actual Spend vs Weekly Budget -->
+        <div class="card">
+            <h2>Actual Spend (Last 7 Days) vs. Stated Weekly Budget</h2>
+            <p style="font-size: 13px; color: #666;" id="spendPeriodLabel">Loading transaction period...</p>
+            <div class="chart-container">
+                <canvas id="spendVsBudgetChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Chart 2: Placeholder Horizon Chart -->
+        <div class="card">
+            <h2>
+                Future Horizon Projection
+                <span class="placeholder-badge">PLACEHOLDER</span>
+            </h2>
+            <p style="font-size: 13px; color: #666;">Reserved for future multi-month sequence projection architecture.</p>
+            <div class="chart-container">
+                <canvas id="placeholderChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Row: Log Transaction Form & Alerts Panel -->
+    <div class="grid-2col" style="margin-top: 25px;">
+        <!-- Bottom-Left: Log Transaction -->
+        <div class="card">
+            <h2>Log Daily Transaction</h2>
+            <p style="font-size: 13px; color: #666;">Records a transaction under your account and updates AI predictions.</p>
+
+            <div id="txStatusBox" style="display: none; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px;"></div>
+
+            <form id="transactionForm" onsubmit="handleLogTransaction(event)">
+                <div class="form-group">
+                    <label for="txDate">Transaction Date</label>
+                    <input type="date" id="txDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="txAmount">Amount (₹)*</label>
+                    <input type="number" id="txAmount" required min="1" step="0.5" placeholder="e.g. 450">
+                </div>
+
+                <div class="grid-2col">
+                    <div class="form-group">
+                        <label for="txCategory">Category*</label>
+                        <select id="txCategory" required>
+                            <option value="">Select Category...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="txPaymentMode">Payment Mode*</label>
+                        <select id="txPaymentMode" required>
+                            <option value="">Select Mode...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="txLocation">Location (Optional)</label>
+                    <input type="text" id="txLocation" placeholder="e.g. Mumbai, Online, Bangalore">
+                </div>
+
+                <div class="form-group">
+                    <label for="txDescription">Description / Notes (Optional)</label>
+                    <input type="text" id="txDescription" placeholder="e.g. Grocery store, dinner, bills">
+                </div>
+
+                <button type="submit" class="btn-success" style="width: 100%; margin-top: 5px;">
+                    Log Transaction & Update Predictions
+                </button>
+            </form>
+        </div>
+
+        <!-- Bottom-Right: Alerts & Predictions -->
+        <div>
+            <!-- Alerts Card -->
+            <div class="card">
+                <h2>Alerts & Budget Tracking</h2>
+                <div id="alertsContainer">
+                    <p style="color: #666;">Checking budget status...</p>
+                </div>
+            </div>
+
+            <!-- Model History & Data Status Card -->
+            <div class="card">
+                <h2>Model Data Readiness</h2>
+                <div id="dataStatusContainer">
+                    <p style="color: #666;">Verifying training window requirements...</p>
+                </div>
+            </div>
+
+            <!-- Weekly 7-Day Prediction Breakdown Card -->
+            <div class="card">
+                <h2>AI 7-Day Spending Forecast</h2>
+                <div id="predictionSummary">
+                    <p style="color: #666;">Generating predictions...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let spendChartInstance = null;
+    let placeholderChartInstance = null;
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        // Set default date to today
+        document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
+
+        // 1. Authenticate user
+        const user = await checkAuth();
+        if (!user) return;
+
+        document.getElementById('userGreeting').innerHTML = `
+            ${user.name} (@${user.username}) <span class="user-tag">${user.user_id}</span>
+        `;
+
+        // 2. Load lookups
+        await loadLookups();
+
+        // 3. Render charts and alerts
+        await refreshDashboard();
+        renderPlaceholderChart();
+    });
+
+    async function checkAuth() {
+        try {
+            const res = await fetch('/api/me');
+            if (!res.ok) {
+                window.location.href = '/pages/login.html';
+                return null;
+            }
+            const user = await res.json();
+            if (!user.onboarded) {
+                window.location.href = '/pages/onboarding.html';
+                return null;
+            }
+            return user;
+        } catch (err) {
+            window.location.href = '/pages/login.html';
+            return null;
+        }
+    }
+
+    async function handleLogout() {
+        try {
+            await fetch('/api/logout', { method: 'POST' });
+        } catch (e) {}
+        window.location.href = '/pages/login.html';
+    }
+
+    async function loadLookups() {
+        try {
+            const res = await fetch('/api/lookups');
+            const data = await res.json();
+
+            const catSelect = document.getElementById('txCategory');
+            // Filter expense categories for logging
+            const expenseCats = (data.categories || []).filter(c => !['Salary', 'Bonus', 'Freelance'].includes(c.category_name));
+            catSelect.innerHTML = '<option value="">Select Category...</option>' + 
+                expenseCats.map(c => `<option value="${c.category_name}">${c.category_name}</option>`).join('');
+
+            const pmSelect = document.getElementById('txPaymentMode');
+            pmSelect.innerHTML = '<option value="">Select Mode...</option>' + 
+                (data.payment_modes || []).map(p => `<option value="${p.mode_name}">${p.mode_name}</option>`).join('');
+        } catch (err) {
+            console.error('Failed to load lookups:', err);
+        }
+    }
+
+    async function refreshDashboard() {
+        await Promise.all([
+            loadSpendVsBudget(),
+            loadAlerts(),
+            loadPredictions()
+        ]);
+    }
+
+    async function loadSpendVsBudget() {
+        try {
+            const res = await fetch('/api/analytics/weekly-spend');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            document.getElementById('spendPeriodLabel').innerText = 
+                `Period: ${data.period.start_date} to ${data.period.end_date} (Last 7 days)`;
+
+            const labels = ['Overall Spend'];
+            const actuals = [data.overall.actual || 0];
+            const budgets = [data.overall.budget || 0];
+
+            (data.categories || []).forEach(c => {
+                if (c.actual > 0 || (c.budget && c.budget > 0)) {
+                    labels.push(c.category_name);
+                    actuals.push(c.actual);
+                    budgets.push(c.budget || 0);
+                }
+            });
+
+            const ctx = document.getElementById('spendVsBudgetChart').getContext('2d');
+            if (spendChartInstance) spendChartInstance.destroy();
+
+            spendChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Actual Spend (Last 7 Days)',
+                            data: actuals,
+                            backgroundColor: 'rgba(54, 162, 235, 0.75)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Weekly Stated Budget',
+                            data: budgets,
+                            backgroundColor: 'rgba(255, 99, 132, 0.75)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: val => '₹' + Number(val).toLocaleString()
+                            }
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Failed to load spend chart:', err);
+        }
+    }
+
+    function renderPlaceholderChart() {
+        const ctx = document.getElementById('placeholderChart').getContext('2d');
+        if (placeholderChartInstance) placeholderChartInstance.destroy();
+
+        placeholderChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['Week +1', 'Week +2', 'Week +3', 'Week +4', 'Week +5', 'Week +6'],
+                datasets: [{
+                    label: 'Multi-Horizon Spending Trend (Placeholder)',
+                    data: [12500, 14200, 11800, 15500, 13200, 14800],
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    backgroundColor: 'rgba(255, 193, 7, 0.15)',
+                    borderDash: [5, 5],
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: {
+                            callback: val => '₹' + Number(val).toLocaleString()
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    async function loadAlerts() {
+        try {
+            const res = await fetch('/api/alerts');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            const alertsContainer = document.getElementById('alertsContainer');
+            if (!data.alerts || data.alerts.length === 0) {
+                alertsContainer.innerHTML = `
+                    <div class="alert-card alert-ok">
+                        <strong>All Spending Within Budgets!</strong>
+                        <p style="margin: 5px 0 0 0; font-size: 13px;">Predicted weekly totals do not exceed your defined budget limits.</p>
+                    </div>
+                `;
+            } else {
+                alertsContainer.innerHTML = data.alerts.map(a => `
+                    <div class="alert-card alert-${a.severity}">
+                        <strong>${a.severity === 'high' ? '⚠️ CRITICAL OVERAGE' : '⚠️ BUDGET ALERT'}: ${a.name}</strong>
+                        <p style="margin: 6px 0 4px 0; font-size: 13px;">${a.message}</p>
+                        <div style="font-size: 12px; opacity: 0.85;">
+                            Budget: ₹${Number(a.budget).toLocaleString()} | Predicted: ₹${Number(a.predicted).toLocaleString()} | Overage: ₹${Number(a.overage).toLocaleString()}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            const dataStatusContainer = document.getElementById('dataStatusContainer');
+            if (!data.data_status || data.data_status.length === 0) {
+                dataStatusContainer.innerHTML = `
+                    <div class="alert-card alert-ok">
+                        <strong>All Model Input Windows Satisfied</strong>
+                        <p style="margin: 5px 0 0 0; font-size: 13px;">Sufficient historical sequence depth available across models.</p>
+                    </div>
+                `;
+            } else {
+                dataStatusContainer.innerHTML = data.data_status.map(s => `
+                    <div class="alert-card alert-info">
+                        <strong>${s.target}</strong>
+                        <p style="margin: 4px 0 0 0; font-size: 13px;">${s.message}</p>
+                    </div>
+                `).join('');
+            }
+        } catch (err) {
+            console.error('Failed to load alerts:', err);
+        }
+    }
+
+    async function loadPredictions() {
+        try {
+            const res = await fetch('/api/predictions');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            const container = document.getElementById('predictionSummary');
+            let html = '';
+
+            if (data.overall && data.overall.weekly_predicted) {
+                html += `
+                    <div style="padding: 12px; background: #eef2ff; border-radius: 8px; margin-bottom: 12px;">
+                        <span style="font-size: 13px; font-weight: bold; color: #4b5563;">TOTAL WEEKLY SPEND FORECAST</span>
+                        <div style="font-size: 24px; font-weight: bold; color: #1e3a8a; margin: 4px 0;">
+                            ₹${Number(data.overall.weekly_predicted).toLocaleString()}
+                        </div>
+                        <div class="daily-pills">
+                            ${(data.overall.daily_predictions || []).map((p, idx) => `
+                                <div class="daily-pill">D+${idx+1}: ₹${Number(p).toLocaleString()}</div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `<p style="font-size: 13px; color: #666;">Overall forecast pending minimum transaction history (10 transactions needed).</p>`;
+            }
+
+            if (data.categories && Object.keys(data.categories).length > 0) {
+                html += '<h4 style="margin: 15px 0 8px 0; font-size: 14px;">Category 7-Day Forecasts:</h4><div class="daily-pills">';
+                for (const [cname, cinfo] of Object.entries(data.categories)) {
+                    html += `
+                        <div class="daily-pill" style="background: #eef2ff;">
+                            <strong>${cname}:</strong> ₹${Number(cinfo.weekly_predicted).toLocaleString()}
+                        </div>
+                    `;
+                }
+                html += '</div>';
+            }
+
+            container.innerHTML = html;
+        } catch (err) {
+            console.error('Failed to load predictions:', err);
+        }
+    }
+
+    async function handleLogTransaction(e) {
+        e.preventDefault();
+        const statusBox = document.getElementById('txStatusBox');
+        statusBox.style.display = 'block';
+        statusBox.style.background = '#e9ecef';
+        statusBox.innerText = 'Logging transaction and computing new predictions...';
+
+        const payload = {
+            date: document.getElementById('txDate').value,
+            amount: parseFloat(document.getElementById('txAmount').value),
+            category: document.getElementById('txCategory').value,
+            payment_mode: document.getElementById('txPaymentMode').value,
+            location: document.getElementById('txLocation').value,
+            description: document.getElementById('txDescription').value
+        };
+
+        try {
+            const res = await fetch('/api/transactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                statusBox.style.background = '#f8d7da';
+                statusBox.style.color = '#721c24';
+                statusBox.innerText = data.detail || 'Failed to log transaction.';
+                return;
+            }
+
+            statusBox.style.background = '#d4edda';
+            statusBox.style.color = '#155724';
+            statusBox.innerText = `Transaction logged successfully (ID: ${data.transaction_id}). Predictions updated!`;
+
+            // Reset form amount and description
+            document.getElementById('txAmount').value = '';
+            document.getElementById('txDescription').value = '';
+
+            // Refresh dashboard
+            await refreshDashboard();
+        } catch (err) {
+            statusBox.style.background = '#f8d7da';
+            statusBox.style.color = '#721c24';
+            statusBox.innerText = 'Network error recording transaction.';
+        }
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onboarding - Personal Finance Analytics</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .budget-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .upload-zone {
+            border: 2px dashed #aaa;
+            padding: 25px;
+            text-align: center;
+            border-radius: 8px;
+            background: #fafafa;
+            margin-top: 15px;
+        }
+        .summary-badge {
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Welcome to Personal Finance Analytics</h1>
+    <p>Set Up Your Weekly Budgets and Import Your Historical Data</p>
+</header>
+
+<div class="container" style="max-width: 900px;">
+    <!-- Step 1: Budgets -->
+    <div class="card">
+        <h2>1. Define Your Weekly Budgets</h2>
+        <p>Set a spending target for your overall weekly expenses and optionally for each category.</p>
+
+        <div class="form-group" style="max-width: 320px;">
+            <label for="overallBudget"><strong>Total Weekly Budget (₹)*</strong></label>
+            <input type="number" id="overallBudget" required min="1" step="100" placeholder="e.g. 15000" value="15000">
+        </div>
+
+        <h3 style="margin-top: 25px; margin-bottom: 5px;">Category Spending Budgets (Weekly ₹)</h3>
+        <p style="font-size: 13px; color: #666;">Leave empty or 0 if you don't wish to set a strict budget for that category.</p>
+
+        <div id="categoryBudgetsContainer" class="budget-grid">
+            <!-- Dynamically populated from /api/lookups -->
+            <p>Loading categories...</p>
+        </div>
+    </div>
+
+    <!-- Step 2: Historical CSV Upload -->
+    <div class="card">
+        <h2>2. Import Historical Transactions (Optional)</h2>
+        <p>Upload a CSV statement (dataset format). We will map your categories, ignore file user IDs, stamp your account, and calculate initial AI forecasts.</p>
+
+        <div class="upload-zone">
+            <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleFileSelected(event)">
+            <button type="button" class="btn-secondary" onclick="document.getElementById('csvFileInput').click()">Choose CSV File</button>
+            <span id="selectedFileName" style="margin-left: 15px; font-weight: bold;">No file chosen</span>
+
+            <div style="margin-top: 15px;">
+                <button type="button" id="btnUploadCsv" style="display: none;" onclick="uploadCsvFile()">Upload & Process CSV</button>
+            </div>
+        </div>
+
+        <div id="uploadResult" style="display: none; margin-top: 20px;"></div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
+        <button type="button" class="btn-secondary" onclick="finishOnboarding(true)">Skip Data Import & Go to Dashboard</button>
+        <button type="button" class="btn-success" style="font-size: 16px; padding: 12px 28px;" onclick="finishOnboarding(false)">Save Budgets & Complete Setup &rarr;</button>
+    </div>
+</div>
+
+<script>
+    let availableCategories = [];
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        // Guard check
+        try {
+            const meRes = await fetch('/api/me');
+            if (!meRes.ok) {
+                window.location.href = '/pages/login.html';
+                return;
+            }
+        } catch (e) {
+            window.location.href = '/pages/login.html';
+            return;
+        }
+
+        // Load lookup categories
+        try {
+            const res = await fetch('/api/lookups');
+            const data = await res.json();
+            availableCategories = data.categories || [];
+
+            const container = document.getElementById('categoryBudgetsContainer');
+            // Filter expense categories
+            const expenseCats = availableCategories.filter(c => !['Salary', 'Bonus', 'Freelance'].includes(c.category_name));
+            
+            container.innerHTML = expenseCats.map(cat => `
+                <div class="form-group" style="margin-bottom: 10px;">
+                    <label for="cat_${cat.category_id}">${cat.category_name}</label>
+                    <input type="number" id="cat_${cat.category_id}" data-id="${cat.category_id}" data-name="${cat.category_name}" min="0" step="50" placeholder="₹0">
+                </div>
+            `).join('');
+        } catch (err) {
+            console.error('Error loading categories:', err);
+        }
+    });
+
+    function handleFileSelected(e) {
+        const file = e.target.files[0];
+        if (file) {
+            document.getElementById('selectedFileName').innerText = file.name;
+            document.getElementById('btnUploadCsv').style.display = 'inline-block';
+        }
+    }
+
+    async function uploadCsvFile() {
+        const fileInput = document.getElementById('csvFileInput');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const resBox = document.getElementById('uploadResult');
+        resBox.style.display = 'block';
+        resBox.innerHTML = '<p>Uploading and processing transactions...</p>';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const res = await fetch('/api/onboarding/upload-csv', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                resBox.innerHTML = `<div class="alert-card alert-high">Upload failed: ${data.detail || 'Unknown error'}</div>`;
+                return;
+            }
+            resBox.innerHTML = `
+                <div class="alert-card alert-ok">
+                    <h4>CSV Import Complete!</h4>
+                    <span class="summary-badge alert-ok">Inserted: ${data.inserted}</span>
+                    <span class="summary-badge alert-medium">Skipped (duplicates): ${data.skipped}</span>
+                    <span class="summary-badge alert-high">Bad rows: ${data.bad_rows}</span>
+                </div>
+            `;
+        } catch (err) {
+            resBox.innerHTML = `<div class="alert-card alert-high">Error uploading file.</div>`;
+        }
+    }
+
+    async function finishOnboarding(isSkip) {
+        const overallAmount = parseFloat(document.getElementById('overallBudget').value) || 15000;
+        
+        const catInputs = document.querySelectorAll('#categoryBudgetsContainer input');
+        const categoryBudgets = [];
+        catInputs.forEach(inp => {
+            const val = parseFloat(inp.value);
+            if (!isNaN(val) && val > 0) {
+                categoryBudgets.push({
+                    category_id: parseInt(inp.dataset.id),
+                    category_name: inp.dataset.name,
+                    weekly_amount: val
+                });
+            }
+        });
+
+        try {
+            const res = await fetch('/api/onboarding/budgets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    weekly_overall: overallAmount,
+                    category_budgets: categoryBudgets
+                })
+            });
+
+            if (res.ok) {
+                window.location.href = '/pages/analytics.html';
+            } else {
+                const err = await res.json();
+                alert(err.detail || 'Failed to save budgets.');
+            }
+        } catch (e) {
+            alert('Failed to connect to backend.');
+        }
+    }
+</script>
+
+</body>
+</html>

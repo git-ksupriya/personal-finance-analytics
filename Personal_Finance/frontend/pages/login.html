@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login & Sign Up - Personal Finance Analytics</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .auth-container {
+            max-width: 480px;
+            margin: 40px auto;
+        }
+        .tab-bar {
+            display: flex;
+            border-bottom: 2px solid #ddd;
+            margin-bottom: 25px;
+        }
+        .tab-bar button {
+            flex: 1;
+            padding: 12px;
+            background: #e9ecef;
+            color: #495057;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px 6px 0 0;
+            transition: all 0.2s;
+        }
+        .tab-bar button.active {
+            background: #222;
+            color: white;
+        }
+        .error-box {
+            display: none;
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .success-box {
+            display: none;
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Personal Finance Analytics</h1>
+    <p>Sign In or Register to Access Your Financial Dashboard</p>
+</header>
+
+<div class="container auth-container">
+    <div class="card">
+        <div class="tab-bar">
+            <button id="tabLogin" class="active" onclick="switchTab('login')">Sign In</button>
+            <button id="tabSignup" onclick="switchTab('signup')">Create Account</button>
+        </div>
+
+        <div id="errorBox" class="error-box"></div>
+        <div id="successBox" class="success-box"></div>
+
+        <!-- Login Form -->
+        <form id="loginForm" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label for="loginUsername">Username or Email</label>
+                <input type="text" id="loginUsername" required placeholder="e.g. U001 or alex">
+            </div>
+            <div class="form-group">
+                <label for="loginPassword">Password</label>
+                <input type="password" id="loginPassword" required placeholder="Enter password">
+            </div>
+            <button type="submit" style="width: 100%; margin-top: 10px;">Sign In</button>
+        </form>
+
+        <!-- Signup Form -->
+        <form id="signupForm" style="display: none;" onsubmit="handleSignup(event)">
+            <div class="form-group">
+                <label for="signupUsername">Username</label>
+                <input type="text" id="signupUsername" required placeholder="Choose a unique username">
+            </div>
+            <div class="form-group">
+                <label for="signupName">Full Name</label>
+                <input type="text" id="signupName" required placeholder="Your Name">
+            </div>
+            <div class="form-group">
+                <label for="signupEmail">Email Address</label>
+                <input type="email" id="signupEmail" required placeholder="name@example.com">
+            </div>
+            <div class="form-group">
+                <label for="signupPassword">Password</label>
+                <input type="password" id="signupPassword" required placeholder="Choose a password">
+            </div>
+            <button type="submit" class="btn-success" style="width: 100%; margin-top: 10px;">Create Account</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    function switchTab(tab) {
+        document.getElementById('errorBox').style.display = 'none';
+        document.getElementById('successBox').style.display = 'none';
+        if (tab === 'login') {
+            document.getElementById('tabLogin').classList.add('active');
+            document.getElementById('tabSignup').classList.remove('active');
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('signupForm').style.display = 'none';
+        } else {
+            document.getElementById('tabSignup').classList.add('active');
+            document.getElementById('tabLogin').classList.remove('active');
+            document.getElementById('signupForm').style.display = 'block';
+            document.getElementById('loginForm').style.display = 'none';
+        }
+    }
+
+    function showError(msg) {
+        const eb = document.getElementById('errorBox');
+        eb.innerText = msg;
+        eb.style.display = 'block';
+    }
+
+    async function handleLogin(e) {
+        e.preventDefault();
+        showError('');
+        document.getElementById('errorBox').style.display = 'none';
+
+        const username = document.getElementById('loginUsername').value.trim();
+        const password = document.getElementById('loginPassword').value;
+
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showError(data.detail || 'Login failed. Please check credentials.');
+                return;
+            }
+            window.location.href = data.redirect || '/pages/analytics.html';
+        } catch (err) {
+            showError('Network error connecting to backend service.');
+        }
+    }
+
+    async function handleSignup(e) {
+        e.preventDefault();
+        showError('');
+        document.getElementById('errorBox').style.display = 'none';
+
+        const username = document.getElementById('signupUsername').value.trim();
+        const name = document.getElementById('signupName').value.trim();
+        const email = document.getElementById('signupEmail').value.trim();
+        const password = document.getElementById('signupPassword').value;
+
+        try {
+            const res = await fetch('/api/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, name, email, password })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showError(data.detail || 'Signup failed.');
+                return;
+            }
+            window.location.href = data.redirect || '/pages/onboarding.html';
+        } catch (err) {
+            showError('Network error connecting to backend service.');
+        }
+    }
+
+    // Proactively check if already logged in
+    window.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const res = await fetch('/api/me');
+            if (res.ok) {
+                const user = await res.json();
+                window.location.href = user.onboarded ? '/pages/analytics.html' : '/pages/onboarding.html';
+            }
+        } catch (e) {}
+    });
+</script>
+
+</body>
+</html>

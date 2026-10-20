@@ -127,3 +127,105 @@ input {
 .page-links a:hover {
     background: #eef2ff;
 }
+
+/* Supplementary styles for Auth, Onboarding, Analytics */
+.grid-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+@media (max-width: 800px) {
+    .grid-2col {
+        grid-template-columns: 1fr;
+    }
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.form-group input, .form-group select, .form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.btn-secondary {
+    background: #6c757d;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+}
+
+.btn-success {
+    background: #28a745;
+}
+
+.btn-success:hover {
+    background: #218838;
+}
+
+.alert-card {
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border-left: 5px solid;
+}
+
+.alert-high {
+    background: #fff3f3;
+    border-color: #dc3545;
+    color: #721c24;
+}
+
+.alert-medium {
+    background: #fff8e6;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.alert-info {
+    background: #eef5fc;
+    border-color: #17a2b8;
+    color: #0c5460;
+}
+
+.alert-ok {
+    background: #e8f5e9;
+    border-color: #28a745;
+    color: #155724;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    background: #eee;
+    color: #333;
+    border: 1px solid #ddd;
+    cursor: pointer;
+    border-radius: 6px 6px 0 0;
+    margin-right: 5px;
+    font-weight: bold;
+}
+
+.tab-btn.active {
+    background: white;
+    border-bottom: 2px solid white;
+    color: #000;
+}
+
+.chart-container {
+    position: relative;
+    height: 320px;
+    width: 100%;
+}
