@@ -30,7 +30,7 @@ services:
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       MAX_CONTENT_LENGTH: ${MAX_CONTENT_LENGTH:-12582912}
     ports:
-      - "127.0.0.1:${APP_PORT:-8000}:8000"
+      - "${APP_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
