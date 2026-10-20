@@ -1,15 +1,25 @@
 import io
 import unittest
 from contextlib import nullcontext
-from datetime import date, timedelta
+from datetime import date
 from unittest.mock import Mock, patch
 
+import numpy as np
+import pandas as pd
 import torch
 from werkzeug.datastructures import FileStorage
 from werkzeug.security import check_password_hash
 
 from backend.app import app, parse_import
-from backend.inference import predict_category_daily
+from backend.inference import (
+    _monthly_overall_series,
+    _complete_month_range,
+    predict_category_monthly,
+    predict_overall_monthly,
+)
+from ml.lstm_categories.preprocessing.feature_extraction import (
+    create_complete_daily_series,
+)
 
 
 class FakeCursor:
@@ -168,42 +178,180 @@ class CsvImportValidationTests(unittest.TestCase):
 
 
 class InferenceInputTests(unittest.TestCase):
-    def test_category_forecast_handles_empty_transaction_history(self):
-        result = predict_category_daily([], as_of=date(2026, 1, 31))
+    def test_monthly_forecasts_handle_empty_transaction_history(self):
+        result = predict_category_monthly(
+            [],
+            account_created_at=date(2026, 1, 31),
+        )
 
         self.assertFalse(result["available"])
         self.assertEqual(result["categories"], {})
         self.assertEqual(result["errors"], [])
 
-    def test_category_forecast_produces_seven_daily_values(self):
-        today = date(2026, 1, 31)
-        transactions = [
-            {
-                "user_id": "TESTUSER",
-                "category": "Food",
-                "transaction_date": date(2025, 10, 24) + timedelta(days=offset),
-                "transaction_type": "Expense",
-                "amount": 100 + offset,
-            }
-            for offset in range(100)
+    def test_incomplete_boundary_months_are_not_used(self):
+        segment = [
+            {"transaction_date": date(2024, 1, 2)},
+            {"transaction_date": date(2024, 12, 30)},
         ]
 
-        class IdentityScaler:
-            def transform(self, values):
-                return values
+        periods = _complete_month_range(segment)
 
-            def inverse_transform(self, values):
-                return values
+        self.assertEqual(len(periods), 10)
+        self.assertEqual(str(periods[0]), "2024-02")
+        self.assertEqual(str(periods[-1]), "2024-11")
 
+    @staticmethod
+    def make_monthly_transactions(first_month, months, include_gap=False):
+        transactions = []
+        transaction_id = 1
+        for offset in range(months):
+            month = pd.Period(first_month, freq="M") + offset
+            transaction_dates = [month.start_time.date(), month.end_time.date()]
+            for transaction_date in transaction_dates:
+                transactions.append(
+                    {
+                        "transaction_id": transaction_id,
+                        "user_id": "TESTUSER",
+                        "category": "Food",
+                        "transaction_date": transaction_date,
+                        "transaction_type": "Expense",
+                        "amount": 35.0 if transaction_date.day == 1 else 65.0,
+                    }
+                )
+                transaction_id += 1
+        if include_gap:
+            transactions.append(
+                {
+                    "transaction_id": transaction_id,
+                    "user_id": "TESTUSER",
+                    "category": "Food",
+                    "transaction_date": date(2024, 2, 15),
+                    "transaction_type": "Income",
+                    "amount": 500.0,
+                }
+            )
+        return transactions
+
+    class IdentityScaler:
+        def transform(self, values):
+            return values
+
+        def inverse_transform(self, values):
+            return values
+
+    def test_overall_forecast_is_seven_calendar_month_totals(self):
+        transactions = self.make_monthly_transactions("2024-01", 12, include_gap=True)
+        model = Mock(return_value=torch.tensor([[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0]]))
+        with patch(
+            "backend.inference.load_overall_model",
+            return_value=(model, self.IdentityScaler()),
+        ):
+            result = predict_overall_monthly(
+                transactions,
+                account_created_at=date(2024, 1, 1),
+            )
+
+        self.assertTrue(result["available"])
+        self.assertEqual(result["target_unit"], "INR per calendar month")
+        self.assertEqual(len(result["values"]), 7)
+        self.assertEqual(result["target_periods"][0], "2025-01-01")
+        np.testing.assert_array_equal(
+            model.call_args.args[0].numpy()[0, :, 0],
+            np.full(10, 100.0),
+        )
+
+    def test_category_forecast_aggregates_transactions_to_monthly_totals(self):
+        transactions = self.make_monthly_transactions("2024-01", 14)
+        transactions = [
+            {key: value for key, value in row.items() if key != "transaction_id"}
+            for row in transactions
+        ]
         model = Mock(return_value=torch.zeros((1, 7)))
         with patch(
             "backend.inference.load_category_model",
-            return_value=(model, IdentityScaler()),
+            return_value=(model, self.IdentityScaler()),
         ):
-            result = predict_category_daily(transactions, as_of=today)
+            result = predict_category_monthly(
+                transactions,
+                account_created_at=date(2024, 1, 1),
+            )
 
         self.assertTrue(result["available"])
         self.assertEqual(len(result["categories"]["Food"]), 7)
+        self.assertEqual(result["target_unit"], "INR per calendar month")
+        self.assertEqual(result["target_periods"][0], "2025-03-01")
+        model_input = model.call_args.args[0].numpy()
+        np.testing.assert_array_equal(model_input[0, :, 0], np.full(12, 100.0))
+
+    def test_internal_missing_month_is_zero_filled(self):
+        transactions = self.make_monthly_transactions("2024-01", 12)
+        transactions = [
+            row
+            for row in transactions
+            if row["transaction_date"].month != 3
+        ]
+        segment = [
+            {**row, "transaction_date": row["transaction_date"]}
+            for row in transactions
+        ]
+        periods = _complete_month_range(segment)
+        totals = _monthly_overall_series(segment, periods)
+
+        self.assertEqual(len(periods), 12)
+        self.assertEqual(totals[1], 100.0)
+        self.assertEqual(totals[2], 0.0)
+
+    def test_missing_days_inside_history_coverage_are_zero_filled(self):
+        daily = pd.DataFrame(
+            [
+                {
+                    "user_id": "TESTUSER",
+                    "category": "Food",
+                    "date": pd.Timestamp("2024-01-01"),
+                    "daily_spending": 10.0,
+                },
+                {
+                    "user_id": "TESTUSER",
+                    "category": "Food",
+                    "date": pd.Timestamp("2024-01-03"),
+                    "daily_spending": 20.0,
+                },
+            ]
+        )
+
+        completed = create_complete_daily_series(daily)
+
+        self.assertEqual(
+            completed["daily_spending"].tolist(),
+            [10.0, 0.0, 20.0],
+        )
+
+    def test_unknown_upload_gap_is_not_bridged_for_monthly_history(self):
+        uploaded = self.make_monthly_transactions("2023-01", 14)
+        dashboard = self.make_monthly_transactions("2024-06", 6)
+        for offset, row in enumerate(dashboard, start=len(uploaded) + 1):
+            row["transaction_id"] = offset
+            row["source"] = "manual"
+        for row in uploaded:
+            row["source"] = "csv"
+        with patch(
+            "backend.inference.load_overall_model",
+            return_value=(
+                Mock(return_value=torch.zeros((1, 7))),
+                self.IdentityScaler(),
+            ),
+        ):
+            result = predict_overall_monthly(
+                uploaded + dashboard,
+                account_created_at=date(2024, 6, 1),
+            )
+
+        self.assertTrue(result["available"])
+        self.assertEqual(result["target_periods"][0], "2024-03-01")
+        self.assertEqual(
+            result["diagnostics"]["missing_gap"],
+            {"start_exclusive": "2024-02-29", "end_exclusive": "2024-06-01"},
+        )
 
 
 if __name__ == "__main__":

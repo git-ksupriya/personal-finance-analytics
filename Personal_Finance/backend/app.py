@@ -1,4 +1,3 @@
-import calendar
 import hmac
 import logging
 import os
@@ -23,12 +22,15 @@ from flask import (
     session,
     url_for,
 )
-from psycopg2.extras import RealDictCursor, execute_batch
+from psycopg2.extras import Json, RealDictCursor, execute_batch
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from backend.inference import (
-    predict_category_daily,
-    predict_overall_transaction_steps,
+from backend.inference import predict_category_monthly, predict_overall_monthly
+from backend.spending_analytics import (
+    detect_prediction_anomalies,
+    detect_transaction_anomalies,
+    monthly_financial_totals,
+    select_user_history,
 )
 
 
@@ -466,6 +468,477 @@ def np_is_finite_positive(value):
         return False
 
 
+def parse_recurring_payments(form, category_ids):
+    types = form.getlist("recurring_payment_type[]")
+    categories = form.getlist("recurring_category[]")
+    descriptions = form.getlist("recurring_description[]")
+    amounts = form.getlist("recurring_amount[]")
+    due_dates = form.getlist("recurring_next_due_date[]")
+    lengths = {len(types), len(categories), len(descriptions), len(amounts), len(due_dates)}
+    if len(lengths) > 1:
+        raise ValueError("Recurring payment details are incomplete.")
+
+    known_categories = {
+        name.casefold(): (name, identifier)
+        for name, identifier in category_ids.items()
+    }
+    result = []
+    today = date.today()
+    for index, values in enumerate(zip(types, categories, descriptions, amounts, due_dates), start=1):
+        payment_type, category, description, amount_text, due_text = values
+        if not any(value.strip() for value in values):
+            continue
+        payment_type = payment_type.strip().casefold()
+        if payment_type not in ("income", "expenditure"):
+            raise ValueError(f"Recurring entry {index}: select income or expenditure.")
+        category_match = known_categories.get(category.strip().casefold())
+        if category_match is None:
+            raise ValueError(f"Recurring entry {index}: select a valid category.")
+        try:
+            amount = float(amount_text)
+            due_date = date.fromisoformat(due_text)
+            if not np_is_finite_positive(amount):
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ValueError(f"Recurring entry {index}: enter a positive amount and valid due date.")
+        if len(description.strip()) > 500:
+            raise ValueError(f"Recurring entry {index}: description must be 500 characters or fewer.")
+        result.append(
+            {
+                "payment_type": payment_type,
+                "category_id": category_match[1],
+                "amount": round(amount, 2),
+                "next_due_date": due_date,
+                "description": description.strip() or category_match[0],
+            }
+        )
+    return result
+
+
+def _load_financial_context(cursor, user_id, today):
+    month_start = today.replace(day=1)
+    cursor.execute(
+        """
+        SELECT t.transaction_id, t.user_id, t.amount, t.transaction_type,
+               t.transaction_date, t.description, t.source,
+               c.category_id, c.category_name AS category
+        FROM transactions t
+        JOIN categories c ON c.category_id = t.category_id
+        WHERE t.user_id = %s
+        ORDER BY t.transaction_date, t.transaction_id
+        """,
+        (user_id,),
+    )
+    transactions = cursor.fetchall()
+    cursor.execute("SELECT created_at FROM users WHERE user_id = %s", (user_id,))
+    user_row = cursor.fetchone()
+    account_created_at = user_row["created_at"] if user_row else None
+    cursor.execute(
+        "SELECT monthly_budget FROM user_preferences WHERE user_id = %s",
+        (user_id,),
+    )
+    preference = cursor.fetchone()
+    cursor.execute(
+        """
+        SELECT b.budget_amount, c.category_id, c.category_name AS category
+        FROM budgets b
+        JOIN categories c ON c.category_id = b.category_id
+        WHERE b.user_id = %s AND b.month = %s
+        """,
+        (user_id, month_start),
+    )
+    budgets = cursor.fetchall()
+    cursor.execute(
+        """
+        SELECT recurring_id, payment_type, category_id, amount, frequency,
+               next_due_date, description, is_active
+        FROM recurring_payments
+        WHERE user_id = %s AND is_active = TRUE AND frequency = 'monthly'
+        """,
+        (user_id,),
+    )
+    recurring = cursor.fetchall()
+    cursor.execute("SELECT category_id, category_name FROM categories")
+    categories = {name: identifier for identifier, name in cursor.fetchall()}
+    return (
+        transactions,
+        account_created_at,
+        preference,
+        budgets,
+        recurring,
+        categories,
+    )
+
+
+def _persist_anomalies(cursor, user_id, anomalies, category_ids):
+    predicted_event_keys = [
+        event["event_key"]
+        for event in anomalies
+        if event["detection_type"] == "predicted"
+    ]
+    cursor.execute(
+        """
+        UPDATE anomalies
+        SET status = 'resolved', resolved_at = NOW()
+        WHERE user_id = %s AND detection_type = 'predicted'
+          AND status = 'active'
+          AND (event_key IS NULL OR event_key <> ALL(%s))
+        """,
+        (user_id, predicted_event_keys),
+    )
+    for event in anomalies:
+        cursor.execute(
+            """
+            INSERT INTO anomalies (
+                transaction_id, model_id, user_id, prediction_id, category_id,
+                reconstruction_error, is_anomaly, scope, detection_type,
+                target_period, observed_amount, historical_mean, first_quartile,
+                third_quartile, threshold_amount, history_count,
+                detection_method, reason, event_key
+            )
+            VALUES (%s, NULL, %s, %s, %s, 0, TRUE, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, event_key)
+                WHERE user_id IS NOT NULL AND event_key IS NOT NULL
+            DO UPDATE SET
+                prediction_id = EXCLUDED.prediction_id,
+                observed_amount = EXCLUDED.observed_amount,
+                historical_mean = EXCLUDED.historical_mean,
+                first_quartile = EXCLUDED.first_quartile,
+                third_quartile = EXCLUDED.third_quartile,
+                threshold_amount = EXCLUDED.threshold_amount,
+                history_count = EXCLUDED.history_count,
+                detection_method = EXCLUDED.detection_method,
+                reason = EXCLUDED.reason,
+                status = 'active',
+                resolved_at = NULL
+            """,
+            (
+                event["transaction_id"],
+                user_id,
+                event["prediction_id"],
+                category_ids.get(event["category"]),
+                event["scope"],
+                event["detection_type"],
+                event["target_period"],
+                event["observed_amount"],
+                event["historical_mean"],
+                event["q1"],
+                event["q3"],
+                event["threshold"],
+                event["history_count"],
+                event["method"],
+                event["reason"],
+                event["event_key"],
+            ),
+        )
+
+
+def _persist_budget_alerts(
+    cursor,
+    user_id,
+    today,
+    totals,
+    transactions,
+    budgets,
+    predicted_categories=None,
+    predicted_overall=None,
+    predictions_current=True,
+    overall_predictions_current=None,
+    has_overall_budget=True,
+):
+    month_start = today.replace(day=1)
+    actual_month = totals["actual_monthly_spending"]
+    overall_limit = totals["net_after_recurring_obligations"]
+    category_budgets = {
+        row["category"]: (float(row["budget_amount"]), row["category_id"])
+        for row in budgets
+    }
+    category_actual = {}
+    for row in transactions:
+        if row["transaction_type"] != "Expense":
+            continue
+        if month_start <= row["transaction_date"] <= today:
+            category_actual[row["category"]] = (
+                category_actual.get(row["category"], 0.0) + float(row["amount"])
+            )
+
+    category_result = predicted_categories or {}
+    target_period = month_start.isoformat()
+
+    def forecast_for_month(result, category=None):
+        if not result or target_period not in result.get("target_periods", []):
+            return None
+        index = result["target_periods"].index(target_period)
+        values = (
+            result.get("categories", {}).get(category, [])
+            if category is not None
+            else result.get("values", [])
+        )
+        if index >= len(values):
+            return None
+        return float(values[index])
+
+    projected_categories = {}
+    if predictions_current:
+        for category in category_result.get("categories", {}):
+            projection = forecast_for_month(category_result, category)
+            if projection is not None:
+                projected_categories[category] = projection
+    projected_overall = (
+        forecast_for_month(predicted_overall)
+        if (
+            predictions_current
+            if overall_predictions_current is None
+            else overall_predictions_current
+        )
+        else None
+    )
+
+    desired = []
+
+    def add_alert(alert_type, scope, category_id, message):
+        period = month_start.isoformat()
+        dedupe_key = f"{alert_type}:{scope}:{period}"
+        desired.append(dedupe_key)
+        cursor.execute(
+            """
+            INSERT INTO alerts (
+                user_id, alert_type, message, severity, scope, category_id,
+                target_period, dedupe_key, status, resolved_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active', NULL)
+            ON CONFLICT (user_id, dedupe_key)
+                WHERE dedupe_key IS NOT NULL
+            DO UPDATE SET message = EXCLUDED.message,
+                          severity = EXCLUDED.severity,
+                          status = 'active',
+                          resolved_at = NULL
+            """,
+            (
+                user_id,
+                alert_type,
+                message,
+                "high" if alert_type == "budget_actual" else "medium",
+                scope,
+                category_id,
+                month_start,
+                dedupe_key,
+            ),
+        )
+
+    if has_overall_budget and actual_month > overall_limit:
+        add_alert(
+            "budget_actual",
+            "overall",
+            None,
+            f"Actual spending INR {actual_month:,.2f} exceeded net spendable "
+            f"amount INR {overall_limit:,.2f} after recurring obligations.",
+        )
+    elif (
+        has_overall_budget
+        and projected_overall is not None
+        and projected_overall > overall_limit
+    ):
+        add_alert(
+            "budget_predicted",
+            "overall",
+            None,
+            f"Projected spending INR {projected_overall:,.2f} may exceed net "
+            f"spendable amount INR {overall_limit:,.2f}.",
+        )
+
+    for category, (budget, category_id) in category_budgets.items():
+        actual = category_actual.get(category, 0.0)
+        projection = projected_categories.get(category) if predictions_current else None
+        if actual > budget:
+            add_alert(
+                "budget_actual",
+                f"category:{category_id}",
+                category_id,
+                f"Actual {category} spending INR {actual:,.2f} exceeded its "
+                f"INR {budget:,.2f} monthly budget.",
+            )
+        elif projection is not None and projection > budget:
+            add_alert(
+                "budget_predicted",
+                f"category:{category_id}",
+                category_id,
+                f"Projected {category} spending INR {projection:,.2f} may exceed "
+                f"its INR {budget:,.2f} monthly budget.",
+            )
+
+    cursor.execute(
+        """
+        SELECT dedupe_key FROM alerts
+        WHERE user_id = %s AND alert_type LIKE 'budget_%%'
+          AND target_period = %s AND status = 'active'
+        """,
+        (user_id, month_start),
+    )
+    stale_keys = [
+        row["dedupe_key"]
+        for row in cursor.fetchall()
+        if row["dedupe_key"] and row["dedupe_key"] not in desired
+    ]
+    if stale_keys:
+        cursor.execute(
+            """
+            UPDATE alerts
+            SET status = 'resolved', resolved_at = NOW()
+            WHERE user_id = %s AND dedupe_key = ANY(%s) AND status = 'active'
+            """,
+            (user_id, stale_keys),
+        )
+    return projected_categories, projected_overall
+
+
+def evaluate_actual_financial_events(cursor, user_id):
+    today = date.today()
+    (
+        transactions,
+        account_created_at,
+        preference,
+        budgets,
+        recurring,
+        category_ids,
+    ) = _load_financial_context(cursor, user_id, today)
+    totals = monthly_financial_totals(
+        preference["monthly_budget"] if preference else 0,
+        recurring,
+        transactions,
+        today,
+    )
+    _persist_budget_alerts(
+        cursor,
+        user_id,
+        today,
+        totals,
+        transactions,
+        budgets,
+        has_overall_budget=preference is not None,
+    )
+    selected, _ = select_user_history(transactions, account_created_at)
+    _persist_anomalies(
+        cursor,
+        user_id,
+        detect_transaction_anomalies(selected),
+        category_ids,
+    )
+    return transactions, account_created_at
+
+
+def evaluate_predicted_financial_events(
+    cursor,
+    user_id,
+    overall_result,
+    category_result,
+    prediction_ids,
+    account_created_at,
+):
+    today = date.today()
+    (
+        transactions,
+        _,
+        preference,
+        budgets,
+        recurring,
+        category_ids,
+    ) = _load_financial_context(cursor, user_id, today)
+    totals = monthly_financial_totals(
+        preference["monthly_budget"] if preference else 0,
+        recurring,
+        transactions,
+        today,
+    )
+    diagnostics = category_result.get("diagnostics", {})
+    is_fresh = not diagnostics.get("is_stale", True)
+    overall_diagnostics = overall_result.get("diagnostics", {})
+    overall_is_fresh = not overall_diagnostics.get("is_stale", True)
+    _persist_budget_alerts(
+        cursor,
+        user_id,
+        today,
+        totals,
+        transactions,
+        budgets,
+        category_result,
+        predicted_overall=overall_result,
+        predictions_current=is_fresh,
+        overall_predictions_current=overall_is_fresh,
+        has_overall_budget=preference is not None,
+    )
+    selected, history_diagnostics = select_user_history(
+        transactions, account_created_at
+    )
+    anomalies = detect_transaction_anomalies(selected)
+    if is_fresh:
+        anomalies += detect_prediction_anomalies(
+            transactions,
+            category_result,
+            prediction_ids,
+            history_diagnostics,
+        )
+    _persist_anomalies(
+        cursor,
+        user_id,
+        anomalies,
+        category_ids,
+    )
+
+
+def reevaluate_cached_predictions(cursor, user_id):
+    cursor.execute(
+        "SELECT created_at FROM users WHERE user_id = %s",
+        (user_id,),
+    )
+    user = cursor.fetchone()
+    cursor.execute(
+        """
+        SELECT overall_result, category_result, source_transaction_id
+        FROM inference_runs WHERE user_id = %s
+        """,
+        (user_id,),
+    )
+    run = cursor.fetchone()
+    cursor.execute(
+        """
+        SELECT COALESCE(MAX(transaction_id), 0) AS latest_transaction_id
+        FROM transactions WHERE user_id = %s
+        """,
+        (user_id,),
+    )
+    latest_transaction_id = cursor.fetchone()["latest_transaction_id"]
+    if (
+        not run
+        or run["source_transaction_id"] != latest_transaction_id
+        or run["overall_result"].get("target_unit") != "INR per calendar month"
+        or run["category_result"].get("target_unit") != "INR per calendar month"
+    ):
+        return
+    cursor.execute(
+        """
+        SELECT p.prediction_id, p.target_period, c.category_name AS category
+        FROM predictions p
+        JOIN categories c ON c.category_id = p.category_id
+        WHERE p.user_id = %s AND p.prediction_type = 'category_monthly'
+        """,
+        (user_id,),
+    )
+    prediction_ids = {
+        (row["category"], row["target_period"]): row["prediction_id"]
+        for row in cursor.fetchall()
+    }
+    evaluate_predicted_financial_events(
+        cursor,
+        user_id,
+        run["overall_result"],
+        run["category_result"],
+        prediction_ids,
+        user["created_at"] if user else None,
+    )
+
+
 @app.post("/api/onboarding")
 @login_required
 def save_onboarding():
@@ -523,6 +996,10 @@ def save_onboarding():
                     payment_mode_ids,
                     location_ids,
                 )
+                recurring_rows = parse_recurring_payments(
+                    request.form,
+                    category_ids,
+                )
 
                 unknown_budgets = set(category_budgets) - set(category_ids_by_key)
                 if unknown_budgets:
@@ -557,6 +1034,24 @@ def save_onboarding():
                             budget_amount,
                         ),
                     )
+                for payment in recurring_rows:
+                    cursor.execute(
+                        """
+                        INSERT INTO recurring_payments (
+                            user_id, category_id, amount, frequency, next_due_date,
+                            description, is_active, payment_type
+                        )
+                        VALUES (%s, %s, %s, 'monthly', %s, %s, TRUE, %s)
+                        """,
+                        (
+                            session["user_id"],
+                            payment["category_id"],
+                            payment["amount"],
+                            payment["next_due_date"],
+                            payment["description"],
+                            payment["payment_type"],
+                        ),
+                    )
                 if uploaded_rows:
                     execute_batch(
                         cursor,
@@ -577,6 +1072,8 @@ def save_onboarding():
                             for row in uploaded_rows
                         ],
                     )
+                evaluate_actual_financial_events(cursor, session["user_id"])
+                reevaluate_cached_predictions(cursor, session["user_id"])
         session["onboarded"] = True
         return jsonify(
             {
@@ -599,6 +1096,9 @@ def add_transaction():
     description = str(data.get("description", "")).strip()
     date_value = str(data.get("date", "")).strip()
     amount_value = str(data.get("amount", "")).strip()
+    transaction_type = str(data.get("transaction_type", "Expense")).strip().title()
+    if transaction_type not in ("Expense", "Income"):
+        return api_error("Transaction type must be Expense or Income.", 400)
     try:
         transaction_date = date.fromisoformat(date_value)
         amount = float(amount_value)
@@ -631,18 +1131,20 @@ def add_transaction():
                         user_id, category_id, amount, transaction_type,
                         transaction_date, description, source
                     )
-                    VALUES (%s, %s, %s, 'Expense', %s, %s, 'manual')
+                    VALUES (%s, %s, %s, %s, %s, %s, 'manual')
                     RETURNING transaction_id
                     """,
                     (
                         session["user_id"],
                         selected_category["category_id"],
                         round(amount, 2),
+                        transaction_type,
                         transaction_date,
                         description or None,
                     ),
                 )
                 transaction_id = cursor.fetchone()["transaction_id"]
+                evaluate_actual_financial_events(cursor, session["user_id"])
         return jsonify({"transaction_id": transaction_id}), 201
     except psycopg2.Error:
         logger.exception("Transaction insert failed")
@@ -673,43 +1175,53 @@ def model_id(cursor, model_name, model_type, model_path):
     return row[0] if not isinstance(row, dict) else row["model_id"]
 
 
-def persist_predictions(user_id, transactions, overall, category_predictions, as_of):
-    if not overall.get("available") and not category_predictions.get("categories"):
-        return
-    try:
-        with database_connection() as connection:
-            with connection.cursor() as cursor:
-                overall_id = None
-                if overall.get("available"):
-                    overall_id = model_id(
-                        cursor,
-                        "Overall seven-step LSTM",
-                        "LSTM_OVERALL",
-                        PROJECT_DIR / "ml" / "lstm" / "lstm_model.pt",
-                    )
-                category_id = None
-                if category_predictions.get("categories"):
-                    category_id = model_id(
-                        cursor,
-                        "Category seven-day LSTM",
-                        "LSTM_CATEGORY",
-                        PROJECT_DIR / "ml" / "lstm_categories" / "models",
-                    )
-
-                cursor.execute(
-                    """
-                    DELETE FROM predictions
-                    WHERE user_id = %s
-                      AND (
-                        prediction_type LIKE 'overall_transaction_step_%%'
-                        OR prediction_type = 'category_daily'
-                      )
-                    """,
-                    (user_id,),
+def persist_predictions(
+    user_id,
+    transactions,
+    overall,
+    category_predictions,
+    latest_transaction_id,
+    account_created_at,
+):
+    with database_connection() as connection:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            overall_model_id = None
+            category_model_id = None
+            if overall.get("available"):
+                overall_model_id = model_id(
+                    cursor,
+                    "Overall monthly LSTM",
+                    "LSTM_OVERALL",
+                    PROJECT_DIR / "ml" / "lstm" / "monthly" / "lstm_model.pt",
+                )
+            if category_predictions.get("categories"):
+                category_model_id = model_id(
+                    cursor,
+                    "Category monthly LSTM",
+                    "LSTM_CATEGORY",
+                    PROJECT_DIR / "ml" / "lstm_categories" / "models" / "monthly",
                 )
 
-                if overall_id is not None:
-                    cursor.executemany(
+            cursor.execute(
+                """
+                DELETE FROM predictions
+                WHERE user_id = %s
+                  AND (
+                    prediction_type LIKE 'overall_transaction_step_%%'
+                    OR prediction_type = 'category_daily'
+                    OR prediction_type LIKE 'overall_monthly_step_%%'
+                    OR prediction_type = 'category_monthly'
+                  )
+                """,
+                (user_id,),
+            )
+
+            if overall_model_id is not None:
+                target_periods = overall.get("target_periods", [])
+                for step, value in enumerate(overall["values"], start=1):
+                    if step > len(target_periods):
+                        break
+                    cursor.execute(
                         """
                         INSERT INTO predictions (
                             user_id, model_id, prediction_type, target_period,
@@ -717,91 +1229,101 @@ def persist_predictions(user_id, transactions, overall, category_predictions, as
                         )
                         VALUES (%s, %s, %s, %s, %s)
                         """,
-                        [
-                            (
-                                user_id,
-                                overall_id,
-                                f"overall_transaction_step_{step}",
-                                as_of,
-                                value,
-                            )
-                            for step, value in enumerate(overall["values"], start=1)
-                        ],
+                        (
+                            user_id,
+                            overall_model_id,
+                            f"overall_monthly_step_{step}",
+                            date.fromisoformat(target_periods[step - 1]),
+                            value,
+                        ),
                     )
 
-                if category_id is not None:
-                    cursor.execute(
-                        """
-                        SELECT category_id, category_name FROM categories
-                        """
-                    )
-                    ids = {name: identifier for identifier, name in cursor.fetchall()}
-                    category_rows = []
-                    for name, values in category_predictions["categories"].items():
-                        if name not in ids:
-                            continue
-                        for offset, value in enumerate(values, start=1):
-                            category_rows.append(
-                                (
-                                    user_id,
-                                    category_id,
-                                    "category_daily",
-                                    ids[name],
-                                    as_of + timedelta(days=offset),
-                                    value,
-                                )
+            prediction_ids = {}
+            if category_model_id is not None:
+                cursor.execute("SELECT category_id, category_name FROM categories")
+                ids = {name: identifier for identifier, name in cursor.fetchall()}
+                target_periods = category_predictions.get("target_periods", [])
+                for category, values in category_predictions["categories"].items():
+                    if category not in ids:
+                        continue
+                    for offset, value in enumerate(values):
+                        if offset >= len(target_periods):
+                            break
+                        target_period = date.fromisoformat(target_periods[offset])
+                        cursor.execute(
+                            """
+                            INSERT INTO predictions (
+                                user_id, model_id, prediction_type, category_id,
+                                target_period, predicted_value
                             )
-                    cursor.executemany(
-                        """
-                        INSERT INTO predictions (
-                            user_id, model_id, prediction_type, category_id,
-                            target_period, predicted_value
+                            VALUES (%s, %s, 'category_monthly', %s, %s, %s)
+                            RETURNING prediction_id
+                            """,
+                            (
+                                user_id,
+                                category_model_id,
+                                ids[category],
+                                target_period,
+                                value,
+                            ),
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        category_rows,
-                    )
-    except psycopg2.Error:
-        logger.exception("Could not persist generated model predictions")
+                        prediction_ids[(category, target_period)] = cursor.fetchone()[
+                            "prediction_id"
+                        ]
+
+            cursor.execute(
+                """
+                INSERT INTO inference_runs (
+                    user_id, source_transaction_id, generated_at,
+                    overall_result, category_result
+                )
+                VALUES (%s, %s, NOW(), %s, %s)
+                ON CONFLICT (user_id) DO UPDATE
+                SET source_transaction_id = EXCLUDED.source_transaction_id,
+                    generated_at = EXCLUDED.generated_at,
+                    overall_result = EXCLUDED.overall_result,
+                    category_result = EXCLUDED.category_result
+                """,
+                (
+                    user_id,
+                    latest_transaction_id,
+                    Json(overall),
+                    Json(category_predictions),
+                ),
+            )
+            evaluate_predicted_financial_events(
+                cursor,
+                user_id,
+                overall,
+                category_predictions,
+                prediction_ids,
+                account_created_at,
+            )
 
 
 def build_dashboard(user_id):
     today = date.today()
     month_start = today.replace(day=1)
     six_months_ago = (pd.Timestamp(month_start) - pd.DateOffset(months=5)).date()
-
     with database_connection() as connection:
         with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            (
+                transactions,
+                account_created_at,
+                preferences,
+                budget_rows,
+                recurring,
+                category_ids,
+            ) = _load_financial_context(cursor, user_id, today)
+            latest_transaction_id = max(
+                (row["transaction_id"] for row in transactions),
+                default=0,
+            )
             cursor.execute(
-                """
-                SELECT t.transaction_id, t.user_id, t.amount,
-                       t.transaction_type, t.transaction_date, t.description,
-                       c.category_id, c.category_name AS category
-                FROM transactions t
-                JOIN categories c ON c.category_id = t.category_id
-                WHERE t.user_id = %s
-                ORDER BY t.transaction_date, t.transaction_id
-                """,
+                "SELECT * FROM inference_runs WHERE user_id = %s",
                 (user_id,),
             )
-            transactions = cursor.fetchall()
-            cursor.execute(
-                """
-                SELECT monthly_budget FROM user_preferences WHERE user_id = %s
-                """,
-                (user_id,),
-            )
-            preferences = cursor.fetchone()
-            cursor.execute(
-                """
-                SELECT b.budget_amount, c.category_id, c.category_name AS category
-                FROM budgets b
-                JOIN categories c ON c.category_id = b.category_id
-                WHERE b.user_id = %s AND b.month = %s
-                """,
-                (user_id, month_start),
-            )
-            budget_rows = cursor.fetchall()
+            inference_run = cursor.fetchone()
             cursor.execute(
                 """
                 SELECT c.category_name AS category, SUM(t.amount) AS amount
@@ -815,129 +1337,163 @@ def build_dashboard(user_id):
                 (user_id, six_months_ago, today),
             )
             pie_rows = cursor.fetchall()
-
-    overall = {}
-    category_predictions = {
-        "available": False,
-        "reason": "No expense history is available.",
-        "categories": {},
-        "errors": [],
-    }
     inference_errors = []
-    try:
-        overall = predict_overall_transaction_steps(transactions)
-    except (FileNotFoundError, ValueError, RuntimeError, OSError) as error:
-        logger.exception("Overall LSTM inference failed")
-        overall = {"available": False, "reason": str(error), "values": []}
-        inference_errors.append(str(error))
-    try:
-        category_predictions = predict_category_daily(transactions, today)
-    except (FileNotFoundError, ValueError, RuntimeError, OSError, KeyError) as error:
-        logger.exception("Category LSTM inference failed")
-        category_predictions = {
-            "available": False,
-            "reason": str(error),
-            "categories": {},
-            "errors": [str(error)],
-        }
-        inference_errors.append(str(error))
-
-    actual_month = sum(
-        float(row["amount"])
-        for row in transactions
-        if row["transaction_type"] == "Expense"
-        and month_start <= row["transaction_date"] <= today
-    )
-    category_actual = {}
-    for row in transactions:
-        if (
-            row["transaction_type"] == "Expense"
-            and month_start <= row["transaction_date"] <= today
-        ):
-            category_actual[row["category"]] = (
-                category_actual.get(row["category"], 0.0) + float(row["amount"])
+    if (
+        inference_run is not None
+        and inference_run["source_transaction_id"] == latest_transaction_id
+        and inference_run["overall_result"].get("target_unit")
+        == "INR per calendar month"
+        and inference_run["category_result"].get("target_unit")
+        == "INR per calendar month"
+        and inference_run["overall_result"].get("available")
+        and inference_run["category_result"].get("available")
+    ):
+        overall = inference_run["overall_result"]
+        category_predictions = inference_run["category_result"]
+    else:
+        try:
+            overall = predict_overall_monthly(
+                transactions,
+                account_created_at=account_created_at,
             )
+        except (FileNotFoundError, ValueError, RuntimeError, OSError) as error:
+            logger.exception("Overall LSTM inference failed")
+            overall = {
+                "available": False,
+                "reason": str(error),
+                "values": [],
+                "target_periods": [],
+                "target_unit": "INR per calendar month",
+                "diagnostics": {},
+            }
+            inference_errors.append(str(error))
+        try:
+            category_predictions = predict_category_monthly(
+                transactions,
+                account_created_at=account_created_at,
+            )
+        except (FileNotFoundError, ValueError, RuntimeError, OSError, KeyError) as error:
+            logger.exception("Category LSTM inference failed")
+            category_predictions = {
+                "available": False,
+                "reason": str(error),
+                "categories": {},
+                "errors": [str(error)],
+                "target_periods": [],
+                "target_unit": "INR per calendar month",
+                "diagnostics": {},
+            }
+            inference_errors.append(str(error))
+        persist_predictions(
+            user_id,
+            transactions,
+            overall,
+            category_predictions,
+            latest_transaction_id,
+            account_created_at,
+        )
 
+    with database_connection() as connection:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            reevaluate_cached_predictions(cursor, user_id)
+            cursor.execute(
+                """
+                SELECT a.alert_type, a.severity, a.scope, a.message, a.status,
+                       a.target_period, a.created_at, c.category_name AS category
+                FROM alerts a
+                LEFT JOIN categories c ON c.category_id = a.category_id
+                WHERE a.user_id = %s AND a.status = 'active'
+                ORDER BY a.created_at DESC
+                """,
+                (user_id,),
+            )
+            stored_alerts = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT a.scope, a.detection_type, a.target_period,
+                       a.observed_amount, a.threshold_amount, a.reason,
+                       a.detected_at, c.category_name AS category
+                FROM anomalies a
+                LEFT JOIN categories c ON c.category_id = a.category_id
+                WHERE a.user_id = %s AND a.status = 'active'
+                ORDER BY a.detected_at DESC
+                LIMIT 50
+                """,
+                (user_id,),
+            )
+            stored_anomalies = cursor.fetchall()
+
+    category_diagnostics = category_predictions.get("diagnostics", {})
+    history_end = category_diagnostics.get("history_end_date")
+    category_diagnostics["is_stale"] = (
+        not history_end
+        or (today - date.fromisoformat(history_end)).days > 7
+    )
+    totals = monthly_financial_totals(
+        preferences["monthly_budget"] if preferences else 0,
+        recurring,
+        transactions,
+        today,
+    )
+    actual_month = totals["actual_monthly_spending"]
+    category_actual = {}
+    for transaction in transactions:
+        if (
+            transaction["transaction_type"] == "Expense"
+            and month_start <= transaction["transaction_date"] <= today
+        ):
+            category_actual[transaction["category"]] = (
+                category_actual.get(transaction["category"], 0.0)
+                + float(transaction["amount"])
+            )
     category_budgets = {
         row["category"]: float(row["budget_amount"]) for row in budget_rows
     }
-    days_remaining = calendar.monthrange(today.year, today.month)[1] - today.day
     predicted_categories = {}
-    for name, daily_values in category_predictions.get("categories", {}).items():
+    category_target_periods = category_predictions.get("target_periods", [])
+    for name, monthly_values in category_predictions.get("categories", {}).items():
         actual_amount = category_actual.get(name, 0.0)
-        forecast_mean = sum(daily_values) / len(daily_values)
-        projected_month = actual_amount + forecast_mean * days_remaining
+        projection = None
+        if (
+            monthly_values
+            and not category_diagnostics["is_stale"]
+            and month_start.isoformat() in category_target_periods
+        ):
+            projection = monthly_values[
+                category_target_periods.index(month_start.isoformat())
+            ]
         predicted_categories[name] = {
-            "next_7_days": daily_values,
+            "monthly_forecasts": [
+                {
+                    "target_period": target_period,
+                    "predicted_amount": value,
+                }
+                for target_period, value in zip(
+                    category_target_periods, monthly_values
+                )
+            ],
             "actual_month": round(actual_amount, 2),
             "budget": category_budgets.get(name),
-            "projected_month": round(projected_month, 2),
+            "projected_month": round(projection, 2) if projection is not None else None,
+            "projected_month_period": (
+                month_start.isoformat() if projection is not None else None
+            ),
         }
 
-    expense_history_categories = {
-        row["category"]
-        for row in transactions
-        if row["transaction_type"] == "Expense"
-    }
-    relevant_categories = expense_history_categories | {
-        name for name, budget in category_budgets.items() if budget > 0
-    }
-    overall_projection_available = (
-        bool(predicted_categories)
-        and relevant_categories.issubset(predicted_categories)
-    )
-    predicted_month = (
-        round(sum(item["projected_month"] for item in predicted_categories.values()), 2)
-        if overall_projection_available
-        else None
-    )
-    overall_budget = (
-        float(preferences["monthly_budget"]) if preferences is not None else None
-    )
-
-    alerts = []
-    if overall_budget is not None:
-        if actual_month > overall_budget:
-            alerts.append(
-                {
-                    "severity": "red",
-                    "scope": "Overall budget",
-                    "message": f"Actual spending ₹{actual_month:,.2f} exceeded "
-                    f"the ₹{overall_budget:,.2f} monthly budget.",
-                }
-            )
-        elif predicted_month is not None and predicted_month > overall_budget:
-            alerts.append(
-                {
-                    "severity": "yellow",
-                    "scope": "Overall budget",
-                    "message": f"Projected month-end spending ₹{predicted_month:,.2f} "
-                    f"may exceed the ₹{overall_budget:,.2f} monthly budget.",
-                }
-            )
-
-    for name, budget in category_budgets.items():
-        actual_amount = category_actual.get(name, 0.0)
-        projection = predicted_categories.get(name, {}).get("projected_month")
-        if actual_amount > budget:
-            alerts.append(
-                {
-                    "severity": "red",
-                    "scope": name,
-                    "message": f"Actual {name} spending ₹{actual_amount:,.2f} "
-                    f"exceeded the ₹{budget:,.2f} category budget.",
-                }
-            )
-        elif projection is not None and projection > budget:
-            alerts.append(
-                {
-                    "severity": "yellow",
-                    "scope": name,
-                    "message": f"Projected {name} spending ₹{projection:,.2f} "
-                    f"may exceed the ₹{budget:,.2f} category budget.",
-                }
-            )
-
+    overall_diagnostics = overall.get("diagnostics", {})
+    overall_is_stale = overall_diagnostics.get("is_stale", True)
+    overall_target_periods = overall.get("target_periods", [])
+    predicted_month = None
+    if (
+        overall.get("available")
+        and not overall_is_stale
+        and month_start.isoformat() in overall_target_periods
+    ):
+        predicted_month = round(
+            float(overall["values"][overall_target_periods.index(month_start.isoformat())]),
+            2,
+        )
+    budget_limit = totals["net_after_recurring_obligations"]
     pie_total = sum(float(row["amount"]) for row in pie_rows)
     pie = [
         {
@@ -959,25 +1515,74 @@ def build_dashboard(user_id):
         }
         for row in reversed(transactions[-30:])
     ]
-
-    persist_predictions(
-        user_id,
-        transactions,
-        overall,
-        category_predictions,
-        today,
-    )
+    alerts = [
+        {
+            "severity": "red" if row["alert_type"] == "budget_actual" else "yellow",
+            "scope": row["category"] or row["scope"] or "Overall budget",
+            "message": row["message"],
+            "status": row["status"],
+            "created_at": row["created_at"].isoformat(),
+        }
+        for row in stored_alerts
+    ]
+    recurring_summary = [
+        {
+            "payment_type": row["payment_type"],
+            "category": next(
+                (
+                    name
+                    for name, category_id in category_ids.items()
+                    if category_id == row["category_id"]
+                ),
+                "Uncategorized",
+            ),
+            "description": row["description"],
+            "amount": round(float(row["amount"]), 2),
+            "frequency": row["frequency"],
+            "next_due_date": row["next_due_date"].isoformat(),
+            "is_active": row["is_active"],
+        }
+        for row in recurring
+    ]
+    anomalies = [
+        {
+            "scope": row["category"] or row["scope"] or "Overall spending",
+            "type": row["detection_type"] or "actual",
+            "target_period": (
+                row["target_period"].isoformat() if row["target_period"] else None
+            ),
+            "observed_amount": (
+                round(float(row["observed_amount"]), 2)
+                if row["observed_amount"] is not None
+                else None
+            ),
+            "threshold_amount": (
+                round(float(row["threshold_amount"]), 2)
+                if row["threshold_amount"] is not None
+                else None
+            ),
+            "reason": row["reason"],
+            "detected_at": row["detected_at"].isoformat(),
+        }
+        for row in stored_anomalies
+    ]
     return {
         "month": month_start.isoformat(),
         "currency": "INR",
-        "actual_monthly_spending": round(actual_month, 2),
-        "monthly_budget": round(overall_budget, 2) if overall_budget is not None else None,
+        **totals,
+        "monthly_budget": round(float(preferences["monthly_budget"]), 2)
+        if preferences
+        else None,
+        "budget_alert_limit": round(budget_limit, 2),
         "projected_monthly_spending": predicted_month,
         "projection_method": (
-            "Actual month-to-date spending plus the mean of the category LSTMs' "
-            "next-seven-day forecasts for each remaining calendar day."
+            f"Overall LSTM forecast for {month_start:%B %Y}, using the previous "
+            "10 complete calendar-month expense totals."
             if predicted_month is not None
-            else None
+            else (
+                overall.get("reason")
+                or "No overall monthly prediction is available for the current calendar month."
+            )
         ),
         "overall_lstm": overall,
         "category_predictions": predicted_categories,
@@ -985,10 +1590,13 @@ def build_dashboard(user_id):
             "available": category_predictions.get("available", False),
             "reason": category_predictions.get("reason"),
             "errors": category_predictions.get("errors", []),
+            "diagnostics": category_diagnostics,
         },
         "category_spending_six_months": pie,
         "transactions": transactions_recent,
+        "recurring_payments": recurring_summary,
         "alerts": alerts,
+        "anomalies": anomalies,
         "inference_errors": inference_errors,
     }
 

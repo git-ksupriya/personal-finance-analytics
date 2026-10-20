@@ -1,2 +1,3 @@
 ml/models/cnn/processed/
 ml/lstm_categories/preprocessing/processed/
+preprocessing/processed/monthly/
