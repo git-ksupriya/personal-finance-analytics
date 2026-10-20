@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Dashboard · Personal Finance Analytics</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="dashboard-header">
+    <div><h1>Personal Finance Analytics</h1><p>Welcome, {{ username }}</p></div>
+    <div class="header-actions"><button id="refresh-button" class="secondary">Refresh analytics</button><button id="logout-button" class="secondary">Log out</button><button id="delete-account-button" class="danger">Delete account</button></div>
+</header>
+<main class="container">
+    <p id="dashboard-message" class="message" role="status">Loading your transactions and forecasts…</p>
+    <section class="analytics-grid" aria-label="Spending analytics">
+        <article class="card metric-card">
+            <h2>Actual this month</h2>
+            <p class="metric" id="actual-spending">—</p>
+            <p>Budget: <strong id="overall-budget">—</strong></p>
+        </article>
+        <article class="card metric-card">
+            <h2>Projected month-end</h2>
+            <p class="metric" id="projected-spending">—</p>
+            <p>Budget: <strong id="projected-budget">—</strong></p>
+            <small id="projection-note" class="muted">Projection requires sufficient recent history.</small>
+        </article>
+        <article class="card metric-card">
+            <h2>Overall LSTM · next 7 transaction steps</h2>
+            <div id="overall-forecast" class="forecast-values">Waiting for data…</div>
+            <small class="muted">The trained overall model predicts transaction amounts, not calendar-day or monthly totals.</small>
+        </article>
+        <article class="card chart-card">
+            <h2>Category spending · last six months</h2>
+            <div class="chart-layout">
+                <div id="category-chart" class="donut-chart" role="img" aria-label="Category spending chart"></div>
+                <ul id="category-legend" class="legend"></ul>
+            </div>
+        </article>
+        <article class="card category-card">
+            <h2>Category projections vs budget</h2>
+            <p class="muted">Month-end projection extends the next-seven-day forecast's average daily pace over remaining days.</p>
+            <div class="table-scroll"><table><thead><tr><th>Category</th><th>Actual</th><th>Projected</th><th>Budget</th></tr></thead><tbody id="category-projections"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+        </article>
+        <article class="card alerts-card">
+            <h2>Alerts</h2>
+            <div id="alerts-list" class="alerts-list"><p>Loading…</p></div>
+        </article>
+    </section>
+    <section class="lower-grid">
+        <article class="card">
+            <h2>Enter a transaction</h2>
+            <form id="transaction-form" class="transaction-form">
+                <label>Date <input type="date" name="date" required></label>
+                <label>Category <select name="category" id="transaction-category" required></select></label>
+                <label>Amount (INR) <input type="number" name="amount" min="0.01" step="0.01" required></label>
+                <label class="wide">Description <input name="description" maxlength="500" placeholder="What was this expense?"></label>
+                <p id="transaction-message" class="message wide" role="status"></p>
+                <button type="submit">Add expense</button>
+            </form>
+        </article>
+        <article class="card history-card">
+            <h2>Past transactions</h2>
+            <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th></tr></thead><tbody id="transactions-list"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+        </article>
+    </section>
+</main>
+<script src="/app.js" defer></script>
+</body>
+</html>

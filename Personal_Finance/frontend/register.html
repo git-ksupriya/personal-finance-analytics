@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Create account · Personal Finance Analytics</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="auth-page">
+<main class="auth-card">
+    <h1>Create your account</h1>
+    <form id="register-form">
+        <label>Username <input name="username" autocomplete="username" required minlength="3" maxlength="64"></label>
+        <label>Password <input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="256"></label>
+        <small>Use at least 8 characters.</small>
+        <button type="submit">Create account</button>
+    </form>
+    <p id="form-message" class="message" role="status"></p>
+    <p>Already registered? <a href="/login">Sign in</a></p>
+</main>
+<script src="/app.js" defer></script>
+</body>
+</html>
