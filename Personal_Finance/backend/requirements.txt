@@ -1,3 +1,12 @@
 fastapi
 uvicorn[standard]
 psycopg2-binary
+passlib
+bcrypt
+itsdangerous
+torch
+scikit-learn
+joblib
+pandas
+numpy
+python-multipart

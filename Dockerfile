@@ -26,6 +26,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     bcrypt \
     itsdangerous \
     torch --extra-index-url https://download.pytorch.org/whl/cpu \
+    scikit-learn \
     joblib \
     pandas \
     numpy \
