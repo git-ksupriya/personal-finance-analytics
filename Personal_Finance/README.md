@@ -24,7 +24,7 @@ From this directory:
 
    On a new database volume, PostgreSQL applies all files in `dbms/migrations/` in filename order, including `006_persistent_financial_events.sql`. The database data is persisted in the `postgres_data` volume.
 
-3. Open <http://localhost:8000>. Register, set the monthly overall/category budgets, optionally import a CSV, then use the dashboard. PostgreSQL health is available at <http://localhost:8000/api/health>. Both host-published container ports bind to `127.0.0.1`; they are not directly reachable from other machines.
+3. Open <http://localhost:8000>. Register, set the monthly overall/category budgets, optionally import a CSV, then use the dashboard. PostgreSQL health is available at <http://localhost:8000/api/health>. The app is published only to host loopback; PostgreSQL has no host port and is reachable by the app only on the private Compose network.
 
 For an existing PostgreSQL database that already has migrations 001–005, apply migration 006 once (this does not reset or replace existing data):
 
@@ -43,9 +43,10 @@ conda activate finance
 python -m pip install -r backend/requirements.txt
 ```
 
-Start PostgreSQL with Compose, then open another PowerShell window from `Personal_Finance`:
+Start PostgreSQL with the optional loopback-only port mapping (needed when running Flask directly from Conda on the host), then open another PowerShell window from `Personal_Finance`:
 
 ```powershell
+docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d
 $env:DB_HOST = "localhost"
 $env:DB_PORT = "5432"
 $env:DB_NAME = "personal_finance"
@@ -96,11 +97,11 @@ The category split creates sequences only for user/category pairs with enough co
 
 The existing PostgreSQL migrations remain the schema source: `users`, `user_preferences`, `transactions`, `categories`, `budgets`, `model_registry`, `predictions`, `recurring_payments`, `alerts`, and `anomalies` are reused. Migration 006 extends recurring payments, alerts, and anomalies and adds `inference_runs` for caching each user's latest inference results. Credentials are stored as Werkzeug password hashes. Authentication uses Flask's signed, HTTP-only, SameSite=Lax session cookie and CSRF tokens on POST requests. User IDs for data access come only from that session.
 
-Configure `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `SECRET_KEY`. The local `.env.example` uses `SESSION_COOKIE_SECURE=false` for plain-HTTP development. Set `SESSION_COOKIE_SECURE=true` behind HTTPS in a deployed environment.
+Configure `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `SECRET_KEY`. `HOST_DB_PORT` is used only by the optional `docker-compose.local-db.yml` override for host-run development tools; it is not published in the default/Azure Compose configuration. The local `.env.example` uses `SESSION_COOKIE_SECURE=false` for plain-HTTP development. Set `SESSION_COOKIE_SECURE=true` behind HTTPS in a deployed environment.
 
 ### Azure VM deployment with Docker Compose
 
-For an Azure VM deployment using this Compose file, install and configure an HTTPS reverse proxy on the VM (for example, Nginx with a valid TLS certificate) and proxy requests to `http://127.0.0.1:8000`. Set `SESSION_COOKIE_SECURE=true` in the VM's `.env` before starting the app. Keep PostgreSQL's port closed in the Azure Network Security Group; its Compose port is loopback-bound for VM-local administration only. Restrict inbound VM rules to SSH administration and HTTPS (plus HTTP only if needed for certificate issuance/redirects). Use strong, unique database and Flask secret values, and configure encrypted database backups. Do not expose port 8000 directly to the internet or treat the Compose PostgreSQL volume as a managed/high-availability database.
+For an Azure VM deployment using the default Compose file, install and configure an HTTPS reverse proxy on the VM (for example, Nginx with a valid TLS certificate) and proxy requests to `http://127.0.0.1:8000`. Set `SESSION_COOKIE_SECURE=true` in the VM's `.env` before starting the app. PostgreSQL has no published host port and is reachable only by services on the private Compose network. Restrict inbound VM rules to SSH administration and HTTPS (plus HTTP only if needed for certificate issuance/redirects). Use strong, unique database and Flask secret values, and configure encrypted database backups. Do not expose port 8000 directly to the internet or treat the Compose PostgreSQL volume as a managed/high-availability database.
 
 The dashboard's **Delete account** action requires confirmation and removes the signed-in user's account and associated transactions/import records, budgets, and analytics from PostgreSQL. It does not delete shared lookup data or other users' records.
 

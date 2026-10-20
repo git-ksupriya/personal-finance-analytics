@@ -6,8 +6,6 @@ services:
       POSTGRES_DB: ${DB_NAME:-personal_finance}
       POSTGRES_USER: ${DB_USER:-finance_app}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-    ports:
-      - "127.0.0.1:${HOST_DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./dbms/migrations:/docker-entrypoint-initdb.d:ro
