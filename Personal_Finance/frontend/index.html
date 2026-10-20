@@ -1,63 +1,293 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal Finance Analytics</title>
+
+    <title>Personal Finance Intelligence</title>
 
     <link rel="stylesheet" href="/style.css">
+
+    <style>
+        .section-heading {
+            margin-top: 32px;
+            margin-bottom: 16px;
+        }
+
+        .page-links a,
+        .action-links a {
+            display: block;
+            margin: 10px 0;
+        }
+
+        .auth-status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f3f4f6;
+        }
+
+        .notice {
+            margin-top: 12px;
+            font-size: 0.9rem;
+        }
+    </style>
 </head>
 
 <body>
 
-<header>
-    <h1>Personal Finance Analytics</h1>
-    <p>Database Analytics Dashboard</p>
-</header>
+    <header>
+        <h1>Personal Finance Intelligence</h1>
+        <p>Manage spending, explore financial analytics, and forecast expenses.</p>
+    </header>
 
-<div class="container">
+    <main class="container">
 
-    <div class="card">
+        <!-- ===================================== -->
+        <!-- WELCOME -->
+        <!-- ===================================== -->
 
-        <h2>SQL Analytics</h2>
+        <section class="card">
+            <h2>Welcome to Your Finance Dashboard</h2>
 
-        <p>
-            Explore financial transaction data retrieved directly
-            from the PostgreSQL database.
-        </p>
+            <p>
+                Explore transaction data, understand spending patterns,
+                manage budgets, and prepare for future expenses.
+            </p>
 
-    </div>
+            <div class="auth-status">
+                <p id="auth-status">
+                    You are browsing the dashboard.
+                </p>
 
-    <div class="page-links">
+                <div class="action-links">
+                    <a href="/pages/login.html" id="login-link">
+                        Login
+                    </a>
 
-        <a href="/pages/categories.html">
-            Distinct Categories
-        </a>
+                    <a href="/pages/register.html" id="register-link">
+                        Create an Account
+                    </a>
 
-        <a href="/pages/top-transactions.html">
-            Top 5 Transactions
-        </a>
+                    <button type="button" id="logout-button" hidden>
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </section>
 
-        <a href="/pages/category-summary.html">
-            Category Summary
-        </a>
 
-        <a href="/pages/transaction-details.html">
-            Transaction Details
-        </a>
+        <!-- ===================================== -->
+        <!-- SQL ANALYTICS -->
+        <!-- ===================================== -->
 
-        <a href="/pages/user-spending.html">
-            User Spending
-        </a>
+        <section>
+            <h2 class="section-heading">SQL Analytics</h2>
 
-        <a href="/pages/highest-category.html">
-            Highest Category
-        </a>
+            <div class="card">
+                <p>
+                    Explore the existing financial transaction
+                    analytics pages.
+                </p>
 
-    </div>
+                <nav class="page-links">
 
-</div>
+                    <a href="/pages/categories.html">
+                        Distinct Categories
+                    </a>
+
+                    <a href="/pages/top-transactions.html">
+                        Top 5 Transactions
+                    </a>
+
+                    <a href="/pages/category-summary.html">
+                        Category Summary
+                    </a>
+
+                    <a href="/pages/transaction-details.html">
+                        Transaction Details
+                    </a>
+
+                    <a href="/pages/user-spending.html">
+                        User Spending
+                    </a>
+
+                    <a href="/pages/highest-category.html">
+                        Highest Category
+                    </a>
+
+                </nav>
+            </div>
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- TRANSACTION MANAGEMENT -->
+        <!-- ===================================== -->
+
+        <section>
+            <h2 class="section-heading">Transaction Management</h2>
+
+            <div class="card">
+                <p>
+                    Manage individual transactions and import
+                    transaction records from a CSV file.
+                </p>
+
+                <div class="action-links">
+                    <a href="/pages/transaction-details.html">
+                        View Transaction Details
+                    </a>
+
+                    <a href="/pages/transactions.html">
+                        Manage Transactions
+                    </a>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- FINANCIAL ANALYTICS -->
+        <!-- ===================================== -->
+
+        <section>
+            <h2 class="section-heading">Financial Insights</h2>
+
+            <div class="card">
+                <p>
+                    Review spending trends, category breakdowns,
+                    and recent financial activity.
+                </p>
+
+                <div class="action-links">
+                    <a href="/pages/analytics.html">
+                        Financial Analytics
+                    </a>
+
+                    <a href="/pages/user-spending.html">
+                        Explore User Spending
+                    </a>
+
+                    <a href="/pages/category-summary.html">
+                        Explore Category Summary
+                    </a>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- BUDGET MANAGEMENT -->
+        <!-- ===================================== -->
+
+        <section>
+            <h2 class="section-heading">Budget Management</h2>
+
+            <div class="card">
+                <p>
+                    Create weekly budgets, compare expenditure
+                    against your limits, and monitor budget risk.
+                </p>
+
+                <div class="action-links">
+                    <a href="/pages/budgets.html">
+                        Manage Weekly Budgets
+                    </a>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- AI FORECASTING -->
+        <!-- ===================================== -->
+
+        <section>
+            <h2 class="section-heading">AI Spending Forecasts</h2>
+
+            <div class="card">
+                <p>
+                    Prepare to view seven-day expenditure forecasts
+                    generated by the LSTM model.
+                </p>
+
+                <div class="action-links">
+                    <a href="/pages/forecast.html">
+                        View Spending Forecasts
+                    </a>
+
+                    <a href="/pages/alerts.html">
+                        View Financial Alerts
+                    </a>
+                </div>
+
+                <p class="notice">
+                    Forecasting will become available after the
+                    trained model and inference pipeline are integrated.
+                </p>
+            </div>
+        </section>
+
+    </main>
+
+
+    <!-- ========================================= -->
+    <!-- OPTIONAL AUTHENTICATION STATUS -->
+    <!-- ========================================= -->
+
+    <script type="module">
+        import {
+            getSavedUser,
+            isLoggedIn,
+            logoutUser
+        } from "/src/api.js";
+
+        const statusElement =
+            document.getElementById("auth-status");
+
+        const loginLink =
+            document.getElementById("login-link");
+
+        const registerLink =
+            document.getElementById("register-link");
+
+        const logoutButton =
+            document.getElementById("logout-button");
+
+        function updateAuthenticationStatus() {
+            const loggedIn = isLoggedIn();
+            const user = getSavedUser();
+
+            if (loggedIn) {
+                statusElement.textContent = user
+                    ? `Logged in as ${user.name || user.email || user.user_id || "User"}.`
+                    : "An access token is stored in this browser.";
+
+                loginLink.hidden = true;
+                registerLink.hidden = true;
+                logoutButton.hidden = false;
+            } else {
+                statusElement.textContent =
+                    "You are browsing the dashboard. Log in to access protected features.";
+
+                loginLink.hidden = false;
+                registerLink.hidden = false;
+                logoutButton.hidden = true;
+            }
+        }
+
+        logoutButton.addEventListener("click", () => {
+            logoutUser();
+            updateAuthenticationStatus();
+            window.location.href = "/";
+        });
+
+        updateAuthenticationStatus();
+    </script>
 
 </body>
 </html>
+```

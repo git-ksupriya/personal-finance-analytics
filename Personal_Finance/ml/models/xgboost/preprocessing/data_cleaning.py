@@ -102,6 +102,9 @@ df = validate_amounts(df)
 df = validate_dates(df)
 df = remove_outliers(df)
 
-df.to_csv("cleaned_data.csv", index=False)
+df.to_csv(
+    r"C:\Users\Shivananda\personal-finance-analytics\Personal_Finance\ml\models\xgboost\preprocessing\cleaned_data.csv",
+    index=False
+)
 
 print("Cleaned dataset saved successfully!")

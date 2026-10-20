@@ -1,0 +1,345 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Create Account | Personal Finance Intelligence</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f3f6fb;
+            color: #243047;
+        }
+
+        .register-container {
+            width: 100%;
+            max-width: 460px;
+            padding: 32px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        h1 {
+            margin-top: 0;
+            text-align: center;
+            font-size: 26px;
+        }
+
+        .subtitle {
+            margin-bottom: 26px;
+            text-align: center;
+            color: #687386;
+            line-height: 1.5;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            margin-bottom: 18px;
+            padding: 12px;
+            border: 1px solid #cbd3df;
+            border-radius: 8px;
+            font-size: 15px;
+        }
+
+        input:focus {
+            outline: 2px solid #8bb5ff;
+            border-color: #3778df;
+        }
+
+        button {
+            width: 100%;
+            padding: 13px;
+            border: none;
+            border-radius: 8px;
+            background: #2463eb;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.65;
+        }
+
+        .message {
+            display: none;
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .message.error {
+            display: block;
+            color: #a11b1b;
+            background: #fff0f0;
+        }
+
+        .message.success {
+            display: block;
+            color: #176b37;
+            background: #eaf9ef;
+        }
+
+        .footer {
+            margin-top: 22px;
+            text-align: center;
+            line-height: 1.8;
+        }
+
+        .hint {
+            margin-top: -10px;
+            margin-bottom: 18px;
+            font-size: 13px;
+            color: #687386;
+        }
+
+        a {
+            color: #2463eb;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <main class="register-container">
+
+        <h1>Create Your Account</h1>
+
+        <p class="subtitle">
+            Start understanding your spending and managing your finances.
+        </p>
+
+        <form id="register-form">
+
+            <label for="name">Full Name</label>
+
+            <input
+                type="text"
+                id="name"
+                name="name"
+                placeholder="Enter your full name"
+                autocomplete="name"
+                maxlength="100"
+                required
+            >
+
+            <label for="email">Email Address</label>
+
+            <input
+                type="email"
+                id="email"
+                name="email"
+                placeholder="you@example.com"
+                autocomplete="email"
+                required
+            >
+
+            <label for="phone">Phone Number (Optional)</label>
+
+            <input
+                type="tel"
+                id="phone"
+                name="phone"
+                placeholder="Enter your phone number"
+                autocomplete="tel"
+                maxlength="15"
+            >
+
+            <label for="password">Password</label>
+
+            <input
+                type="password"
+                id="password"
+                name="password"
+                placeholder="Create a password"
+                autocomplete="new-password"
+                minlength="8"
+                maxlength="72"
+                required
+            >
+
+            <p class="hint">
+                Use at least 8 characters.
+            </p>
+
+            <label for="confirm-password">Confirm Password</label>
+
+            <input
+                type="password"
+                id="confirm-password"
+                name="confirm-password"
+                placeholder="Enter your password again"
+                autocomplete="new-password"
+                minlength="8"
+                maxlength="72"
+                required
+            >
+
+            <button type="submit" id="register-button">
+                Create Account
+            </button>
+
+            <div
+                id="message"
+                class="message"
+                role="status"
+                aria-live="polite"
+            ></div>
+
+        </form>
+
+        <div class="footer">
+            <p>
+                Already have an account?
+                <a href="/pages/login.html">Login</a>
+            </p>
+
+            <p>
+                <a href="/">Back to Dashboard</a>
+            </p>
+        </div>
+
+    </main>
+
+    <script type="module">
+        import {
+            registerUser
+        } from "/src/api.js";
+
+        const form = document.getElementById("register-form");
+        const button = document.getElementById("register-button");
+        const message = document.getElementById("message");
+
+        function showMessage(text, type) {
+            message.textContent = text;
+            message.className = `message ${type}`;
+        }
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            message.textContent = "";
+            message.className = "message";
+
+            const name = document
+                .getElementById("name")
+                .value
+                .trim();
+
+            const email = document
+                .getElementById("email")
+                .value
+                .trim();
+
+            const phone = document
+                .getElementById("phone")
+                .value
+                .trim();
+
+            const password = document
+                .getElementById("password")
+                .value;
+
+            const confirmPassword = document
+                .getElementById("confirm-password")
+                .value;
+
+            if (!name) {
+                showMessage(
+                    "Please enter your name.",
+                    "error"
+                );
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                showMessage(
+                    "The passwords do not match.",
+                    "error"
+                );
+                return;
+            }
+
+            if (password.length < 8 || password.length > 72) {
+                showMessage(
+                    "Password must contain between 8 and 72 characters.",
+                    "error"
+                );
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = "Creating Account...";
+
+            const userData = {
+                name,
+                email,
+                password,
+            };
+
+            if (phone) {
+                userData.phone = phone;
+            }
+
+            try {
+                const result = await registerUser(userData);
+
+                showMessage(
+                    result.message ||
+                    "Your account was created successfully. You can now log in.",
+                    "success"
+                );
+
+                form.reset();
+
+                window.setTimeout(() => {
+                    window.location.assign("/pages/login.html");
+                }, 1200);
+
+            } catch (error) {
+                showMessage(
+                    error.message ||
+                    "Registration failed. Please try again.",
+                    "error"
+                );
+
+            } finally {
+                button.disabled = false;
+                button.textContent = "Create Account";
+            }
+        });
+    </script>
+
+</body>
+</html>
+```

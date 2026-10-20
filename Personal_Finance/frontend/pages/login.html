@@ -1,0 +1,249 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Login | Personal Finance Intelligence</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f3f6fb;
+            color: #243047;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 430px;
+            padding: 32px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        h1 {
+            margin-top: 0;
+            text-align: center;
+            font-size: 26px;
+        }
+
+        .subtitle {
+            margin-bottom: 28px;
+            text-align: center;
+            color: #687386;
+            line-height: 1.5;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            margin-bottom: 20px;
+            padding: 12px;
+            border: 1px solid #cbd3df;
+            border-radius: 8px;
+            font-size: 15px;
+        }
+
+        input:focus {
+            outline: 2px solid #8bb5ff;
+            border-color: #3778df;
+        }
+
+        button {
+            width: 100%;
+            padding: 13px;
+            border: none;
+            border-radius: 8px;
+            background: #2463eb;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.65;
+        }
+
+        .message {
+            display: none;
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .message.error {
+            display: block;
+            color: #a11b1b;
+            background: #fff0f0;
+        }
+
+        .message.success {
+            display: block;
+            color: #176b37;
+            background: #eaf9ef;
+        }
+
+        .footer {
+            margin-top: 22px;
+            text-align: center;
+            line-height: 1.8;
+        }
+
+        a {
+            color: #2463eb;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <main class="login-container">
+
+        <h1>Welcome Back!</h1>
+
+        <p class="subtitle">
+            Log in to access your Personal Finance Intelligence dashboard.
+        </p>
+
+        <form id="login-form">
+
+            <label for="email">Email Address</label>
+
+            <input
+                type="email"
+                id="email"
+                name="email"
+                placeholder="you@example.com"
+                autocomplete="email"
+                required
+            >
+
+            <label for="password">Password</label>
+
+            <input
+                type="password"
+                id="password"
+                name="password"
+                placeholder="Enter your password"
+                autocomplete="current-password"
+                required
+            >
+
+            <button type="submit" id="login-button">
+                Login
+            </button>
+
+            <div
+                id="message"
+                class="message"
+                role="status"
+                aria-live="polite"
+            ></div>
+
+        </form>
+
+        <div class="footer">
+            <p>
+                Don't have an account?
+                <a href="/pages/register.html">Create one</a>
+            </p>
+
+            <p>
+                <a href="/">Back to Dashboard</a>
+            </p>
+        </div>
+
+    </main>
+
+    <script type="module">
+        import {
+            loginUser,
+            isLoggedIn
+        } from "/src/api.js";
+
+        const form = document.getElementById("login-form");
+        const button = document.getElementById("login-button");
+        const message = document.getElementById("message");
+
+        function showMessage(text, type) {
+            message.textContent = text;
+            message.className = `message ${type}`;
+        }
+
+        // Redirect an already logged-in user.
+        if (isLoggedIn()) {
+            window.location.replace("/");
+        }
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            message.textContent = "";
+            message.className = "message";
+            button.disabled = true;
+            button.textContent = "Logging in...";
+
+            const email = document
+                .getElementById("email")
+                .value
+                .trim();
+
+            const password = document
+                .getElementById("password")
+                .value;
+
+            try {
+                await loginUser(email, password);
+
+                showMessage(
+                    "Login successful! Redirecting...",
+                    "success"
+                );
+
+                window.setTimeout(() => {
+                    window.location.assign("/");
+                }, 500);
+
+            } catch (error) {
+                showMessage(
+                    error.message || "Login failed. Please try again.",
+                    "error"
+                );
+
+            } finally {
+                button.disabled = false;
+                button.textContent = "Login";
+            }
+        });
+    </script>
+
+</body>
+</html>
+```
