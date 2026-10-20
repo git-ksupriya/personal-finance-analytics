@@ -23,8 +23,8 @@ from sklearn.metrics import (
 
 SEED = 42
 
-HISTORY_DAYS = 90
-FORECAST_DAYS = 7
+HISTORY_MONTHS = 12
+FORECAST_MONTHS = 7
 INPUT_FEATURES = 6
 
 EPOCHS = 5
@@ -66,7 +66,7 @@ class LSTMModel(nn.Module):
         input_size=INPUT_FEATURES,
         hidden_size=HIDDEN_SIZE,
         num_layers=NUM_LAYERS,
-        output_size=FORECAST_DAYS,
+        output_size=FORECAST_MONTHS,
         dropout=DROPOUT
     ):
 
@@ -115,7 +115,8 @@ def load_data(base_dir):
     processed_dir = os.path.join(
         base_dir,
         "preprocessing",
-        "processed"
+        "processed",
+        "monthly",
     )
 
     X_train = np.load(
@@ -501,49 +502,49 @@ def train_category(
     )
 
     # -----------------------------------------------------
-    # Per-day metrics
+    # Per-month metrics
     # -----------------------------------------------------
 
-    per_day_metrics = {}
+    per_month_metrics = {}
 
-    print("\nPer-day metrics:")
+    print("\nPer-month metrics:")
 
-    for day in range(
-        FORECAST_DAYS
+    for month in range(
+        FORECAST_MONTHS
     ):
 
-        actual = y_test_raw[:, day]
+        actual = y_test_raw[:, month]
 
-        predicted = predictions_raw[:, day]
+        predicted = predictions_raw[:, month]
 
-        day_mse = mean_squared_error(
+        month_mse = mean_squared_error(
             actual,
             predicted
         )
 
-        day_mae = mean_absolute_error(
+        month_mae = mean_absolute_error(
             actual,
             predicted
         )
 
-        day_r2 = r2_score(
+        month_r2 = r2_score(
             actual,
             predicted
         )
 
-        per_day_metrics[
-            f"Day_{day + 1}"
+        per_month_metrics[
+            f"Month_{month + 1}"
         ] = {
-            "mse": float(day_mse),
-            "mae": float(day_mae),
-            "r2": float(day_r2)
+            "mse": float(month_mse),
+            "mae": float(month_mae),
+            "r2": float(month_r2)
         }
 
         print(
-            f"Day {day + 1}: "
-            f"MSE={day_mse:,.2f}, "
-            f"MAE={day_mae:,.2f}, "
-            f"R²={day_r2:.4f}"
+            f"Month {month + 1}: "
+            f"MSE={month_mse:,.2f}, "
+            f"MAE={month_mae:,.2f}, "
+            f"R²={month_r2:.4f}"
         )
 
     # -----------------------------------------------------
@@ -594,17 +595,17 @@ def train_category(
     # Predictions
     prediction_df = pd.DataFrame()
 
-    for day in range(
-        FORECAST_DAYS
+    for month in range(
+        FORECAST_MONTHS
     ):
 
         prediction_df[
-            f"Actual_Day_{day + 1}"
-        ] = y_test_raw[:, day]
+            f"Actual_Month_{month + 1}"
+        ] = y_test_raw[:, month]
 
         prediction_df[
-            f"Predicted_Day_{day + 1}"
-        ] = predictions_raw[:, day]
+            f"Predicted_Month_{month + 1}"
+        ] = predictions_raw[:, month]
 
     prediction_df.to_csv(
         os.path.join(
@@ -618,8 +619,8 @@ def train_category(
     metrics = {
         "category": category,
         "model": "2-layer LSTM",
-        "history_days": HISTORY_DAYS,
-        "forecast_days": FORECAST_DAYS,
+        "history_months": HISTORY_MONTHS,
+        "forecast_months": FORECAST_MONTHS,
         "input_features": INPUT_FEATURES,
         "epochs": EPOCHS,
         "batch_size": BATCH_SIZE,
@@ -640,7 +641,8 @@ def train_category(
         "training_time_seconds": float(
             training_time
         ),
-        "per_day": per_day_metrics
+        "target_unit": "INR per calendar month",
+        "per_month": per_month_metrics
     }
 
     with open(
@@ -673,7 +675,8 @@ def main():
 
     output_dir = os.path.join(
         base_dir,
-        "models"
+        "models",
+        "monthly",
     )
 
     os.makedirs(
