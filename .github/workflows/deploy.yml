@@ -1,0 +1,52 @@
+name: Build, Containerize & Deploy to Azure
+
+on:
+  push:
+    branches: [ "feat/latest-sync", "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r Personal_Finance/backend/requirements.txt
+          pip install fastapi uvicorn psycopg2-binary passlib bcrypt itsdangerous torch joblib pandas numpy python-multipart
+
+      - name: Build Docker Image
+        run: |
+          docker build -t personal-finance-app:${{ github.sha }} .
+
+      - name: Log in to Azure Container Registry (ACR)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Push Image to ACR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker tag personal-finance-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/personal-finance-app:${{ github.sha }}
+          docker tag personal-finance-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/personal-finance-app:latest
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/personal-finance-app:${{ github.sha }}
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/personal-finance-app:latest
+
+      - name: Deploy to Azure App Service
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          images: ${{ secrets.ACR_LOGIN_SERVER }}/personal-finance-app:${{ github.sha }}
