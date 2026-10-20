@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Set up your budgets · Personal Finance Analytics</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header><h1>Set up your finances</h1><p>Set this month's budgets and optionally import your history.</p></header>
+<main class="container narrow">
+    <form id="onboarding-form" class="card">
+        <label>Monthly overall budget (INR)
+            <input name="monthly_budget" type="number" min="0" step="0.01" required>
+        </label>
+        <h2>Category budgets (optional)</h2>
+        <div id="category-budgets" class="budget-grid"><p>Loading categories…</p></div>
+        <h2>Import historical transactions (optional)</h2>
+        <p class="muted">CSV needs date, category, and amount columns. The existing dataset columns also work.</p>
+        <label>Transaction CSV <input name="history_csv" type="file" accept=".csv,text/csv"></label>
+        <p id="form-message" class="message" role="status"></p>
+        <div class="form-actions">
+            <button type="submit">Save and continue</button>
+            <button type="button" class="secondary" id="logout-button">Log out</button>
+        </div>
+    </form>
+</main>
+<script src="/app.js" defer></script>
+</body>
+</html>

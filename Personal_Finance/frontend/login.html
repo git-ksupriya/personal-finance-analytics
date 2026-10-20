@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Sign in · Personal Finance Analytics</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="auth-page">
+<main class="auth-card">
+    <h1>Personal Finance Analytics</h1>
+    <p>Sign in to see your spending dashboard.</p>
+    <form id="login-form">
+        <label>Username <input name="username" autocomplete="username" required minlength="3" maxlength="64"></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Sign in</button>
+    </form>
+    <p id="form-message" class="message" role="status"></p>
+    <p>New here? <a href="/register">Create an account</a></p>
+</main>
+<script src="/app.js" defer></script>
+</body>
+</html>
