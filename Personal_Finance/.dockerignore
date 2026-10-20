@@ -1,0 +1,36 @@
+.git
+**/.git
+.env
+**/.env
+.vscode/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.tox/
+**/.venv/
+**/venv/
+**/env/
+**/node_modules/
+
+# Datasets, generated preprocessing outputs, and unrelated model experiments.
+preprocessing/raw/
+preprocessing/processed/
+ml/seasonal_naives/
+ml/lstm_categories/preprocessing/processed/
+ml/models/
+ml/personal_finance.db
+personal_finance_dump.sql
+
+# Inference loads only model weights and scalers, not evaluation outputs.
+ml/lstm/lstm_metrics.json
+ml/lstm/lstm_report.md
+ml/lstm/lstm_results.csv
+ml/lstm_categories/models/category_lstm_metrics.csv
+ml/lstm_categories/models/**/metrics.json
+ml/lstm_categories/models/**/predictions.csv
+
+# Not copied into the application image.
+docs/
+package-lock.json
