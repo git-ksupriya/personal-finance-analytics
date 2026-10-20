@@ -3,6 +3,8 @@ import sys
 import io
 import csv
 import datetime
+import pandas as pd
+import numpy as np
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
@@ -26,10 +28,23 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 sys.path.insert(0, str(BASE_DIR))
 from inference import InferenceEngine
 
+import bcrypt
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-please-change-in-production")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def hash_password(password: str) -> str:
+    pwd_bytes = password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        pwd_bytes = plain_password.encode("utf-8")[:72]
+        hash_bytes = hashed_password.encode("utf-8")
+        return bcrypt.checkpw(pwd_bytes, hash_bytes)
+    except Exception:
+        return False
 
 # =========================================================
 # FASTAPI APP
@@ -225,7 +240,7 @@ def signup(payload: SignupRequest, request: Request):
     if not username or not email or not raw_password:
         raise HTTPException(status_code=400, detail="Username, email, and password are required")
 
-    hashed_pw = pwd_context.hash(raw_password)
+    hashed_pw = hash_password(raw_password)
 
     conn = get_connection()
     try:
@@ -284,7 +299,7 @@ def login(payload: LoginRequest, request: Request):
         if not user or not user["password_hash"]:
             raise HTTPException(status_code=401, detail="Invalid username or password")
 
-        if not pwd_context.verify(password, user["password_hash"]):
+        if not verify_password(password, user["password_hash"]):
             raise HTTPException(status_code=401, detail="Invalid username or password")
 
         request.session["user_id"] = user["user_id"]
