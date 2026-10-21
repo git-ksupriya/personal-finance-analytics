@@ -1,0 +1,11 @@
+feature,importance
+weekday,0.12716433
+lag_3,0.11500274
+rolling_mean_3,0.10796394
+amount,0.09715536
+user_transaction_count,0.09707266
+lag_2,0.093547046
+year,0.09322323
+month,0.091181315
+lag_1,0.089950204
+day,0.087739184

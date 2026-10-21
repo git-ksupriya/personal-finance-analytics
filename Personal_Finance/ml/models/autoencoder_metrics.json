@@ -1,0 +1,22 @@
+{
+  "model_type": "Autoencoder",
+  "training_window": "8 Weeks (56 Days)",
+  "input_features": [
+    "amount",
+    "days_since_last_txn",
+    "monthly_total_spend",
+    "category_monthly_spend",
+    "user_txn_frequency",
+    "rolling_avg_3"
+  ],
+  "input_dim": 6,
+  "latent_dim": 3,
+  "epochs": 40,
+  "final_train_loss": 0.146968,
+  "reconstruction_threshold": 0.174037,
+  "train_samples": 547,
+  "test_samples": 13433,
+  "train_anomalies": 28,
+  "test_anomalies": 1094,
+  "anomaly_rate_pct": 8.14
+}
