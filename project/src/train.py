@@ -3,6 +3,7 @@ import json
 import time
 import uuid
 import argparse
+import joblib
 import numpy as np
 import pandas as pd
 import torch
@@ -15,7 +16,7 @@ from config import (
     MODELS_DIR, REPORTS_DIR, BATCH_SIZE, LEARNING_RATE, NUM_EPOCHS, PATIENCE, SEED
 )
 from datasets import load_data_split
-from models import HurdleRNN
+from models import HurdleRNN, HurdleCNN, HurdleXGBoost
 
 def set_seed(seed=SEED):
     np.random.seed(seed)
@@ -112,50 +113,56 @@ def eval_epoch(model, dataloader, criterion_clf, criterion_reg, device):
 
 def save_predictions_to_db(meta_df, p_spend, pred_amt, model_name, run_id):
     """Writes forecast predictions into PostgreSQL forecasts table."""
-    conn = get_db_connection()
-    records = []
-    for i, row in meta_df.iterrows():
-        records.append((
-            int(row['user_id']),
-            str(row['category']),
-            str(row['target_week']),
-            model_name,
-            float(np.round(p_spend[i], 4)),
-            float(np.round(pred_amt[i], 2)),
-            run_id
-        ))
+    try:
+        conn = get_db_connection()
+        records = []
+        for i, row in meta_df.iterrows():
+            records.append((
+                int(row['user_id']),
+                str(row['category']),
+                str(row['target_week']),
+                model_name,
+                float(np.round(p_spend[i], 4)),
+                float(np.round(pred_amt[i], 2)),
+                run_id
+            ))
 
-    import io
-    output = io.StringIO()
-    pred_df = pd.DataFrame(records, columns=['user_id', 'category', 'target_week', 'model_name', 'p_spend', 'predicted_amt', 'run_id'])
-    pred_df.to_csv(output, sep='\t', header=False, index=False)
-    output.seek(0)
+        import io
+        output = io.StringIO()
+        pred_df = pd.DataFrame(records, columns=['user_id', 'category', 'target_week', 'model_name', 'p_spend', 'predicted_amt', 'run_id'])
+        pred_df.to_csv(output, sep='\t', header=False, index=False)
+        output.seek(0)
 
-    with conn.cursor() as cur:
-        cur.copy_from(
-            output,
-            'forecasts',
-            columns=['user_id', 'category', 'target_week', 'model_name', 'p_spend', 'predicted_amt', 'run_id']
-        )
-    conn.commit()
-    conn.close()
-    print(f"Logged {len(records):,} test predictions into 'forecasts' table for run {run_id}.")
+        with conn.cursor() as cur:
+            cur.copy_from(
+                output,
+                'forecasts',
+                columns=['user_id', 'category', 'target_week', 'model_name', 'p_spend', 'predicted_amt', 'run_id']
+            )
+        conn.commit()
+        conn.close()
+        print(f"Logged {len(records):,} test predictions into 'forecasts' table for run {run_id}.")
+    except Exception as e:
+        print(f"Notice: database forecast logging skipped: {e}")
 
 def log_model_run_to_db(run_id, model_name, hyperparams, metrics):
-    conn = get_db_connection()
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO model_runs (run_id, model_name, hyperparams, metrics)
-            VALUES (%s, %s, %s, %s);
-            """,
-            (run_id, model_name, json.dumps(hyperparams), json.dumps(metrics))
-        )
-    conn.commit()
-    conn.close()
-    print(f"Logged run metadata and metrics into 'model_runs' for {run_id}.")
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO model_runs (run_id, model_name, hyperparams, metrics)
+                VALUES (%s, %s, %s, %s);
+                """,
+                (run_id, model_name, json.dumps(hyperparams), json.dumps(metrics))
+            )
+        conn.commit()
+        conn.close()
+        print(f"Logged run metadata and metrics into 'model_runs' for {run_id}.")
+    except Exception as e:
+        print(f"Notice: database run metadata logging skipped: {e}")
 
-def train_model(model_type="lstm", seq_len=8, hidden_dim=64, num_layers=2, max_epochs=NUM_EPOCHS, sample_frac=1.0):
+def train_neural_model(model_type="lstm", seq_len=8, hidden_dim=64, num_layers=2, max_epochs=NUM_EPOCHS, sample_frac=1.0):
     set_seed(SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n==========================================")
@@ -176,16 +183,28 @@ def train_model(model_type="lstm", seq_len=8, hidden_dim=64, num_layers=2, max_e
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE * 2, shuffle=False)
     test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE * 2, shuffle=False)
 
-    model = HurdleRNN(
-        rnn_type=model_type,
-        dyn_dim=5,
-        num_categories=14,
-        cat_embed_dim=16,
-        user_stat_dim=2,
-        hidden_dim=hidden_dim,
-        num_layers=num_layers,
-        dropout=0.2
-    ).to(device)
+    if model_type in ["lstm", "rnn"]:
+        model = HurdleRNN(
+            rnn_type=model_type,
+            dyn_dim=5,
+            num_categories=14,
+            cat_embed_dim=16,
+            user_stat_dim=2,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=0.2
+        ).to(device)
+    elif model_type == "cnn":
+        model = HurdleCNN(
+            dyn_dim=5,
+            num_categories=14,
+            cat_embed_dim=16,
+            user_stat_dim=2,
+            conv_channels=hidden_dim,
+            dropout=0.2
+        ).to(device)
+    else:
+        raise ValueError(f"Unknown neural model type: {model_type}")
 
     criterion_clf = nn.BCEWithLogitsLoss()
     criterion_reg = nn.HuberLoss(delta=1.0)
@@ -257,9 +276,7 @@ def train_model(model_type="lstm", seq_len=8, hidden_dim=64, num_layers=2, max_e
             user_stats = user_stats.to(device)
 
             _, spend_prob, pred_log_amt = model(x_dyn, cat_idx, user_stats)
-            # Invert log1p: expm1
             pred_amt_val = torch.expm1(pred_log_amt)
-            # Final Hurdle expectation = P(spend) * amount_if_spend
             final_pred_amt = spend_prob * pred_amt_val
 
             all_p_spend.extend(spend_prob.cpu().numpy())
@@ -276,10 +293,7 @@ def train_model(model_type="lstm", seq_len=8, hidden_dim=64, num_layers=2, max_e
     meta_df = pd.read_csv(meta_file)
     save_predictions_to_db(meta_df, p_spend_arr, pred_amt_arr, model_type.upper(), run_id)
 
-    # Compute baseline metrics on test set
     actual_amt = meta_df['actual_amt'].values
-    actual_has_spend = (actual_amt > 0).astype(int)
-
     test_mae = float(np.mean(np.abs(actual_amt - pred_amt_arr)))
     test_rmse = float(np.sqrt(np.mean((actual_amt - pred_amt_arr) ** 2)))
 
@@ -294,15 +308,87 @@ def train_model(model_type="lstm", seq_len=8, hidden_dim=64, num_layers=2, max_e
     log_model_run_to_db(
         run_id=run_id,
         model_name=model_type.upper(),
-        hyperparams={'seq_len': seq_len, 'hidden_dim': hidden_dim, 'num_layers': num_layers, 'lr': LEARNING_RATE},
+        hyperparams={'seq_len': seq_len, 'hidden_dim': hidden_dim, 'lr': LEARNING_RATE},
         metrics=metrics
     )
 
     return model, history, metrics
 
+def train_xgboost_model(seq_len=8, sample_frac=0.1):
+    set_seed(SEED)
+    print(f"\n==========================================")
+    print(f"Training Hurdle XGBoost (window={seq_len})")
+    print(f"==========================================")
+
+    npz_path = MODELS_DIR / f"processed_w{seq_len}.npz"
+    data = np.load(npz_path)
+
+    X_dyn_train = data['X_dyn_train']
+    X_stat_train = data['X_stat_train']
+    y_clf_train = data['y_clf_train']
+    y_reg_train = data['y_reg_train']
+
+    X_dyn_test = data['X_dyn_test']
+    X_stat_test = data['X_stat_test']
+
+    # Subsample training data for fast, efficient tree training
+    n_train = int(len(y_clf_train) * sample_frac)
+    indices = np.random.choice(len(y_clf_train), size=n_train, replace=False)
+    indices.sort()
+
+    print(f"Extracting tabular features for train ({n_train:,} samples) and test ({len(X_dyn_test):,} samples)...")
+    X_train_feat = HurdleXGBoost.extract_tabular_features(X_dyn_train[indices], X_stat_train[indices])
+    y_clf_sample = y_clf_train[indices]
+    y_reg_sample = y_reg_train[indices]
+
+    start_time = time.time()
+    xgb_hurdle = HurdleXGBoost(n_estimators=100, max_depth=5, learning_rate=0.05, random_state=SEED)
+    xgb_hurdle.fit(X_train_feat, y_clf_sample, y_reg_sample)
+    training_time = time.time() - start_time
+
+    # Save model
+    joblib.dump(xgb_hurdle, MODELS_DIR / f"xgboost_w{seq_len}_model.pkl")
+
+    # Run inference on test set in chunks to manage memory
+    print(f"Generating test predictions for Hurdle XGBoost...")
+    chunk_size = 50000
+    all_p_spend = []
+    all_pred_amt = []
+    for i in range(0, len(X_dyn_test), chunk_size):
+        end = min(i + chunk_size, len(X_dyn_test))
+        x_chunk = HurdleXGBoost.extract_tabular_features(X_dyn_test[i:end], X_stat_test[i:end])
+        probs = xgb_hurdle.predict_proba(x_chunk)
+        preds = xgb_hurdle.predict(x_chunk)
+        all_p_spend.extend(probs)
+        all_pred_amt.extend(preds)
+
+    p_spend_arr = np.array(all_p_spend)
+    pred_amt_arr = np.array(all_pred_amt)
+
+    np.save(MODELS_DIR / f"xgb_w{seq_len}_p_spend.npy", p_spend_arr)
+    np.save(MODELS_DIR / f"xgb_w{seq_len}_pred_amt.npy", pred_amt_arr)
+
+    meta_file = MODELS_DIR / f"processed_w{seq_len}_test_meta.csv"
+    meta_df = pd.read_csv(meta_file)
+    run_id = f"xgb_w{seq_len}_{uuid.uuid4().hex[:8]}"
+    save_predictions_to_db(meta_df, p_spend_arr, pred_amt_arr, "XGBOOST", run_id)
+
+    actual_amt = meta_df['actual_amt'].values
+    test_mae = float(np.mean(np.abs(actual_amt - pred_amt_arr)))
+    test_rmse = float(np.sqrt(np.mean((actual_amt - pred_amt_arr) ** 2)))
+
+    metrics = {
+        'test_overall_mae': test_mae,
+        'test_overall_rmse': test_rmse,
+        'training_time_sec': round(training_time, 2)
+    }
+    log_model_run_to_db(run_id, "XGBOOST", {'seq_len': seq_len, 'n_estimators': 100}, metrics)
+    print(f"Hurdle XGBoost Evaluation: Overall MAE: ${test_mae:.2f} | RMSE: ${test_rmse:.2f}")
+    return xgb_hurdle, metrics
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="all", choices=["lstm", "rnn", "all"])
+    parser.add_argument("--model", type=str, default="all", choices=["lstm", "rnn", "cnn", "xgboost", "all"])
     parser.add_argument("--seq_len", type=int, default=8)
     parser.add_argument("--hidden_dim", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=15)
@@ -310,6 +396,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.model in ["lstm", "all"]:
-        train_model(model_type="lstm", seq_len=args.seq_len, hidden_dim=args.hidden_dim, max_epochs=args.epochs, sample_frac=args.sample_frac)
+        train_neural_model(model_type="lstm", seq_len=args.seq_len, hidden_dim=args.hidden_dim, max_epochs=args.epochs, sample_frac=args.sample_frac)
     if args.model in ["rnn", "all"]:
-        train_model(model_type="rnn", seq_len=args.seq_len, hidden_dim=args.hidden_dim, max_epochs=args.epochs, sample_frac=args.sample_frac)
+        train_neural_model(model_type="rnn", seq_len=args.seq_len, hidden_dim=args.hidden_dim, max_epochs=args.epochs, sample_frac=args.sample_frac)
+    if args.model in ["cnn", "all"]:
+        train_neural_model(model_type="cnn", seq_len=args.seq_len, hidden_dim=args.hidden_dim, max_epochs=args.epochs, sample_frac=args.sample_frac)
+    if args.model in ["xgboost", "all"]:
+        train_xgboost_model(seq_len=args.seq_len, sample_frac=0.1)

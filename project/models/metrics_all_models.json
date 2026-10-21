@@ -1,98 +1,114 @@
 {
-  "LSTM": {
-    "model": "Multi-Step LSTM",
-    "overall_mae": 20.12,
-    "overall_rmse": 79.21,
-    "overall_r2": -0.0054,
+  "Hurdle LSTM": {
+    "model": "Hurdle LSTM",
+    "overall_mae": 14.76,
+    "overall_rmse": 79.25,
+    "nonzero_mae": 77.15,
+    "nonzero_rmse": 198.68,
+    "overall_r2": -0.0074,
+    "auc": 0.6751,
+    "f1": 0.304,
     "per_day_mae": [
-      18.71,
-      23.05,
-      21.74,
-      18.61,
-      17.09,
-      15.51,
-      26.13
+      13.63,
+      15.19,
+      15.3,
+      13.35,
+      14.44,
+      16.09,
+      15.33
     ],
     "per_day_rmse": [
-      54.23,
-      63.31,
-      65.21,
-      52.35,
-      78.36,
-      90.76,
-      124.9
+      54.22,
+      63.59,
+      65.43,
+      52.46,
+      78.51,
+      90.22,
+      125.07
     ]
   },
-  "SimpleRNN": {
-    "model": "Multi-Step SimpleRNN",
-    "overall_mae": 24.39,
-    "overall_rmse": 79.52,
-    "overall_r2": -0.0255,
+  "Hurdle SimpleRNN": {
+    "model": "Hurdle SimpleRNN",
+    "overall_mae": 13.13,
+    "overall_rmse": 80.06,
+    "nonzero_mae": 83.51,
+    "nonzero_rmse": 201.9,
+    "overall_r2": -0.0364,
+    "auc": 0.5301,
+    "f1": 0.0,
     "per_day_mae": [
-      19.22,
-      30.32,
-      27.59,
-      35.26,
-      18.02,
-      18.38,
-      21.95
+      12.16,
+      13.47,
+      13.57,
+      11.7,
+      12.83,
+      14.82,
+      13.35
     ],
     "per_day_rmse": [
-      54.19,
-      63.98,
-      65.42,
-      55.61,
-      78.26,
-      90.23,
-      124.87
+      55.49,
+      64.73,
+      66.57,
+      53.6,
+      79.1,
+      90.92,
+      125.56
     ]
   },
-  "CNN": {
-    "model": "1D-CNN Sequence",
-    "overall_mae": 22.2,
-    "overall_rmse": 79.36,
-    "overall_r2": -0.012,
+  "Hurdle 1D-CNN": {
+    "model": "Hurdle 1D-CNN",
+    "overall_mae": 15.47,
+    "overall_rmse": 79.03,
+    "nonzero_mae": 75.72,
+    "nonzero_rmse": 197.76,
+    "overall_r2": -0.0001,
+    "auc": 0.6764,
+    "f1": 0.3469,
     "per_day_mae": [
-      23.26,
-      21.12,
-      20.48,
-      23.05,
-      19.8,
-      26.52,
-      21.18
+      14.84,
+      15.5,
+      16.28,
+      14.08,
+      15.32,
+      17.23,
+      15.02
     ],
     "per_day_rmse": [
-      55.01,
-      63.15,
-      64.94,
-      52.75,
-      78.34,
-      91.6,
-      124.66
+      54.07,
+      63.39,
+      65.11,
+      52.1,
+      78.24,
+      89.87,
+      125.0
     ]
   },
-  "XGBoost": {
-    "model": "XGBoost MultiOutput",
-    "overall_mae": 22.62,
-    "overall_rmse": 86.25,
-    "overall_r2": -0.4154,
+  "Hurdle XGBoost": {
+    "model": "Hurdle XGBoost",
+    "overall_mae": 13.19,
+    "overall_rmse": 79.99,
+    "nonzero_mae": 83.17,
+    "nonzero_rmse": 201.71,
+    "overall_r2": -0.0339,
+    "auc": 0.6761,
+    "f1": 0.3077,
     "per_day_mae": [
-      21.9,
-      22.45,
-      23.26,
-      22.4,
-      22.48,
-      23.75,
-      22.13
+      12.22,
+      13.54,
+      13.64,
+      11.75,
+      12.9,
+      14.88,
+      13.43
     ],
     "per_day_rmse": [
-      55.5,
-      63.38,
-      69.63,
-      100.05,
-      79.3,
-      90.65,
-      124.92
+      55.39,
+      64.63,
+      66.47,
+      53.5,
+      79.06,
+      90.86,
+      125.51
     ]
   }
 }

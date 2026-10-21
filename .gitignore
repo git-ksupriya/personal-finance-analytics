@@ -1,0 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large dataset tensors and arrays
+*.npz
+*.npy
+*.csv.gz
+*test_meta.csv
+
+# Environment variables
+.env
+Personal_Finance/.env
+
+# Temporary artifacts
+sample_transactions.csv
