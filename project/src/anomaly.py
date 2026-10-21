@@ -1,230 +1,178 @@
-import uuid
+import os
+import sys
 import numpy as np
 import pandas as pd
-import psycopg2
-from sklearn.ensemble import IsolationForest
-from sklearn.metrics import precision_score, recall_score, precision_recall_curve, auc
-from config import (
-    POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
-    REPORTS_DIR, TRAIN_WEEK_END
-)
+from pathlib import Path
 
-def get_db_connection():
-    return psycopg2.connect(
-        dbname=POSTGRES_DB,
-        user=POSTGRES_USER,
-        password=POSTGRES_PASSWORD,
-        host=POSTGRES_HOST,
-        port=POSTGRES_PORT
-    )
+# Paths
+BASE_DIR = Path(__file__).resolve().parent.parent
+REPORTS_DIR = BASE_DIR / "reports"
+MODELS_DIR = BASE_DIR / "models"
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-def haversine_distance_vectorized(lat1, lon1, lat2, lon2):
-    """Computes great-circle distance (in kilometers) between coordinates."""
-    R = 6371.0 # Earth radius in km
-    lat1_rad = np.radians(lat1)
-    lon1_rad = np.radians(lon1)
-    lat2_rad = np.radians(lat2)
-    lon2_rad = np.radians(lon2)
+# ---------------------------------------------------------
+# Exact Anomaly Detection Methodology from feature/full-app-v2
+# ---------------------------------------------------------
 
-    dlat = lat2_rad - lat1_rad
-    dlon = lon2_rad - lon1_rad
-
-    a = np.sin(dlat / 2.0)**2 + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(dlon / 2.0)**2
-    c = 2 * np.arcsin(np.clip(np.sqrt(a), 0, 1))
-    return R * c
-
-def run_anomaly_detection():
-    print("\n==========================================")
-    print("Running Step 5: Per-User Anomaly Detection")
-    print("==========================================")
-
-    conn = get_db_connection()
-    print("Fetching transaction features from PostgreSQL...")
-    query = """
-        SELECT 
-            t.trans_num,
-            t.user_id,
-            t.category,
-            t.amt,
-            t.trans_ts,
-            t.is_fraud,
-            u.lat AS user_lat,
-            u.long AS user_long,
-            m.merch_lat,
-            m.merch_long
-        FROM transactions t
-        JOIN users u ON t.user_id = u.user_id
-        JOIN merchants m ON t.merchant_id = m.merchant_id
-        ORDER BY t.user_id, t.trans_ts;
+def robust_threshold(history):
     """
-    df = pd.read_sql_query(query, conn)
-    print(f"Retrieved {len(df):,} transactions.")
+    Robust spending thresholding methodology from feature/full-app-v2:
+    - Primary: Tukey's Upper Fence (Q3 + 1.5 * IQR)
+    - Fallback A: Median + 3 * Scaled MAD (if IQR == 0 but MAD > 0)
+    - Fallback B: Twice Median (if zero dispersion / discrete spending)
+    """
+    values = np.asarray(history, dtype=np.float64)
+    if len(values) == 0:
+        return {"threshold": 0.0, "q1": 0.0, "q3": 0.0, "mean": 0.0, "method": "no_history"}
 
-    # 1. Feature Engineering
-    print("Extracting spatio-temporal transaction features...")
-    df['trans_ts'] = pd.to_datetime(df['trans_ts'])
-    df['hour'] = df['trans_ts'].dt.hour
-    df['day_of_week'] = df['trans_ts'].dt.dayofweek
+    q1, q3 = np.percentile(values, [25, 75], method="linear")
+    iqr = q3 - q1
+    median = float(np.median(values))
+    mad = float(np.median(np.abs(values - median)))
 
-    # Distance between user home and merchant
-    df['dist_km'] = haversine_distance_vectorized(
-        df['user_lat'].astype(float).values,
-        df['user_long'].astype(float).values,
-        df['merch_lat'].astype(float).values,
-        df['merch_long'].astype(float).values
+    if iqr > 0:
+        threshold = q3 + 1.5 * iqr
+        method = "tukey_upper_fence"
+    elif mad > 0:
+        threshold = median + 3.0 * 1.4826 * mad
+        method = "median_plus_3_scaled_mad"
+    else:
+        threshold = median * 2.0
+        method = "twice_median_zero_dispersion_fallback"
+
+    return {
+        "q1": float(q1),
+        "q3": float(q3),
+        "mean": float(np.mean(values)),
+        "threshold": float(threshold),
+        "method": method,
+    }
+
+def run_anomaly_detection(data_path="c:/Users/megha/Downloads/Spakov_DL/fraudTrain.csv", sample_rows=150000):
+    print("=" * 65)
+    print("RUNNING ANOMALY DETECTION (Tukey IQR & Robust Thresholding)")
+    print("Implementation directly aligned with feature/full-app-v2")
+    print("=" * 65)
+
+    print(f"Loading transactions from {data_path}...")
+    df = pd.read_csv(
+        data_path,
+        usecols=["trans_date_trans_time", "cc_num", "category", "amt", "is_fraud", "trans_num"],
+        nrows=sample_rows
     )
+    df["date"] = pd.to_datetime(df["trans_date_trans_time"]).dt.date
+    df = df.sort_values(["cc_num", "trans_date_trans_time"])
 
-    # Time since previous transaction of that user (in hours)
-    df['time_diff_hours'] = df.groupby('user_id')['trans_ts'].diff().dt.total_seconds().fillna(0.0) / 3600.0
+    print(f"Loaded {len(df):,} transactions across {df['cc_num'].nunique():,} users and {df['category'].nunique():,} categories.")
 
-    # 2. Chronological Split for Anomaly Module
-    # Determine train period cut-off date (corresponding to end of week 73)
-    # Using week 73 cutoff: approx 2020-05-25
-    with conn.cursor() as cur:
-        cur.execute("SELECT MIN(week_start) + INTERVAL '%s weeks' FROM weekly_category_spend;", (TRAIN_WEEK_END,))
-        train_cutoff_date = cur.fetchone()[0]
+    # 1. Split Chronologically: 8-Week Training Period (56 days) vs Evaluation Period
+    min_date = df["date"].min()
+    split_date = min_date + pd.Timedelta(weeks=8)
+    
+    train_mask = df["date"] < split_date
+    test_mask = df["date"] >= split_date
 
-    train_cutoff_date = pd.to_datetime(train_cutoff_date).date()
-    print(f"Train period cut-off timestamp: {train_cutoff_date}")
-    df['is_train'] = df['trans_ts'].dt.date <= train_cutoff_date
+    train_df = df[train_mask]
+    test_df = df[test_mask]
 
-    # 3. User-Category Historical Spend Statistics strictly on TRAIN period
-    print("Computing user-category historical statistics on train transactions only...")
-    train_txns = df[df['is_train']]
-    user_cat_stats = train_txns.groupby(['user_id', 'category'])['amt'].agg(
-        cat_mean='mean',
-        cat_std='std',
-        q25=lambda x: np.percentile(x, 25),
-        q75=lambda x: np.percentile(x, 75)
-    ).reset_index()
+    print(f"Train period (8 weeks): {min_date} to {split_date} ({len(train_df):,} transactions)")
+    print(f"Test period: post-{split_date} ({len(test_df):,} transactions)")
 
-    user_cat_stats['cat_std'] = user_cat_stats['cat_std'].fillna(0.0)
-    user_cat_stats['iqr'] = user_cat_stats['q75'] - user_cat_stats['q25']
+    # 2. Compute Robust Baselines per User & Category on Train Period
+    user_cat_baselines = {}
+    user_overall_baselines = {}
 
-    df = pd.merge(df, user_cat_stats, on=['user_id', 'category'], how='left')
+    print("Computing user-category historical baselines from 8-week training data...")
+    for (user, cat), group in train_df.groupby(["cc_num", "category"]):
+        history = group["amt"].values
+        user_cat_baselines[(user, cat)] = robust_threshold(history)
 
-    # Fallback for series unseen in train
-    global_mean = train_txns['amt'].mean()
-    global_std = train_txns['amt'].std()
-    df['cat_mean'] = df['cat_mean'].fillna(global_mean)
-    df['cat_std'] = df['cat_std'].fillna(global_std)
-    df['q25'] = df['q25'].fillna(train_txns['amt'].quantile(0.25))
-    df['q75'] = df['q75'].fillna(train_txns['amt'].quantile(0.75))
-    df['iqr'] = df['iqr'].fillna(df['q75'] - df['q25'])
+    for user, group in train_df.groupby("cc_num"):
+        history = group["amt"].values
+        user_overall_baselines[user] = robust_threshold(history)
 
-    # Method A: Robust Z-Score / IQR Outlier Detection
-    # Using IQR outlier boundary: amt > q75 + 3.0 * IQR (or Robust Z-score)
-    denom = np.where(df['iqr'] > 0, df['iqr'], df['cat_std'])
-    denom = np.where(denom > 0, denom, 1.0)
-    df['robust_score'] = (df['amt'] - df['cat_mean']) / denom
-    iqr_flagged = (df['amt'] > (df['q75'] + 3.0 * df['iqr'])) | (df['robust_score'] > 4.0)
+    # 3. Detect Anomalies on Evaluation Period
+    print("Evaluating test transactions for spending anomalies...")
+    anomalies = []
+    
+    for idx, row in test_df.iterrows():
+        user = row["cc_num"]
+        cat = row["category"]
+        amt = float(row["amt"])
+        
+        # Look up baseline (user-category specific, fallback to user overall)
+        baseline = user_cat_baselines.get((user, cat)) or user_overall_baselines.get(user)
+        if baseline is None:
+            continue
+            
+        threshold = baseline["threshold"]
+        is_anom = amt > threshold
+        
+        if is_anom:
+            anomalies.append({
+                "trans_num": row["trans_num"],
+                "user_id": user,
+                "category": cat,
+                "date": row["date"],
+                "amount": amt,
+                "threshold": round(threshold, 2),
+                "excess_amt": round(amt - threshold, 2),
+                "method": baseline["method"],
+                "is_ground_truth_fraud": bool(row["is_fraud"])
+            })
 
-    # Method B: Isolation Forest
-    print("Fitting Isolation Forest model on transaction features...")
-    feature_cols = ['amt', 'robust_score', 'hour', 'day_of_week', 'dist_km', 'time_diff_hours']
-    X_train = df[df['is_train']][feature_cols].values
-    X_all = df[feature_cols].values
+    anom_df = pd.DataFrame(anomalies)
+    print(f"\nTotal Anomalies Flagged in Test Period: {len(anom_df):,} / {len(test_df):,} ({len(anom_df)/len(test_df)*100:.2f}%)")
 
-    # Fit on train transactions
-    iso_forest = IsolationForest(
-        n_estimators=100,
-        contamination=0.01,
-        random_state=42,
-        n_jobs=-1
-    )
-    # Fit on a representative sample of train to optimize execution
-    sample_idx = np.random.RandomState(42).choice(len(X_train), size=min(100000, len(X_train)), replace=False)
-    iso_forest.fit(X_train[sample_idx])
+    # Evaluate against ground truth fraud if available
+    if "is_ground_truth_fraud" in anom_df.columns and len(anom_df) > 0:
+        true_positives = anom_df["is_ground_truth_fraud"].sum()
+        total_ground_truth_fraud = test_df["is_fraud"].sum()
+        precision = true_positives / len(anom_df) if len(anom_df) > 0 else 0.0
+        recall = true_positives / total_ground_truth_fraud if total_ground_truth_fraud > 0 else 0.0
+        print(f"Ground-Truth Fraud in Test: {total_ground_truth_fraud:,}")
+        print(f"Correctly Flagged (True Positives): {true_positives:,}")
+        print(f"Precision: {precision:.4f} | Recall: {recall:.4f}")
 
-    # Isolation Forest anomaly score: higher score = more anomalous
-    iso_scores = -iso_forest.score_samples(X_all)
-    iso_threshold = np.percentile(iso_scores[df['is_train']], 99.0) # Top 1% flagged
-    iso_flagged = iso_scores >= iso_threshold
+    # 4. Save Flagged Anomalies CSV
+    anom_output_path = MODELS_DIR / "anomalies_detected_v2.csv"
+    anom_df.to_csv(anom_output_path, index=False)
+    print(f"Saved anomalies dataset to {anom_output_path}")
 
-    df['iso_score'] = iso_scores
-    df['iso_flagged'] = iso_flagged
-    df['iqr_flagged'] = iqr_flagged
-
-    # 4. Evaluation against Ground-Truth is_fraud Labels
-    # Evaluated on TEST period transactions (chronologically strictly separated)
-    test_mask = ~df['is_train']
-    y_test_true = df.loc[test_mask, 'is_fraud'].astype(int).values
-
-    def compute_pr_metrics(y_true, scores, flagged):
-        precision = precision_score(y_true, flagged, zero_division=0)
-        recall = recall_score(y_true, flagged, zero_division=0)
-        p_arr, r_arr, _ = precision_recall_curve(y_true, scores)
-        pr_auc = auc(r_arr, p_arr)
-        return float(precision), float(recall), float(pr_auc)
-
-    prec_iqr, rec_iqr, prauc_iqr = compute_pr_metrics(y_test_true, df.loc[test_mask, 'robust_score'].values, df.loc[test_mask, 'iqr_flagged'].values)
-    prec_iso, rec_iso, prauc_iso = compute_pr_metrics(y_test_true, df.loc[test_mask, 'iso_score'].values, df.loc[test_mask, 'iso_flagged'].values)
-
-    fraud_rate = (y_test_true == 1).mean() * 100
-    print("\n--- Anomaly Detection Evaluation (Test Set: ~540k transactions) ---")
-    print(f"Test Fraud Rate: {fraud_rate:.3f}% ({y_test_true.sum():,} fraud txns)")
-    print(f"Robust Z-Score/IQR -> Precision: {prec_iqr:.4f}, Recall: {rec_iqr:.4f}, PR-AUC: {prauc_iqr:.4f}")
-    print(f"Isolation Forest   -> Precision: {prec_iso:.4f}, Recall: {rec_iso:.4f}, PR-AUC: {prauc_iso:.4f}")
-
-    # 5. Write Flagged Anomalies into PostgreSQL 'anomalies' Table
-    print("Writing flagged anomalies to database 'anomalies' table...")
-    run_id_iqr = f"iqr_{uuid.uuid4().hex[:8]}"
-    run_id_iso = f"iso_{uuid.uuid4().hex[:8]}"
-
-    # Prepare flagged records for ingestion
-    flagged_iqr_df = df[df['iqr_flagged']][['trans_num', 'robust_score']].copy()
-    flagged_iqr_df['method'] = 'Robust_IQR'
-    flagged_iqr_df['flagged'] = True
-    flagged_iqr_df['run_id'] = run_id_iqr
-
-    flagged_iso_df = df[df['iso_flagged']][['trans_num', 'iso_score']].copy()
-    flagged_iso_df.rename(columns={'iso_score': 'robust_score'}, inplace=True)
-    flagged_iso_df['method'] = 'Isolation_Forest'
-    flagged_iso_df['flagged'] = True
-    flagged_iso_df['run_id'] = run_id_iso
-
-    all_flagged = pd.concat([flagged_iqr_df, flagged_iso_df], ignore_index=True)
-    all_flagged.columns = ['trans_num', 'score', 'method', 'flagged', 'run_id']
-
-    import io
-    output = io.StringIO()
-    all_flagged.to_csv(output, sep='\t', header=False, index=False)
-    output.seek(0)
-
-    with conn.cursor() as cur:
-        cur.copy_from(
-            output,
-            'anomalies',
-            columns=['trans_num', 'score', 'method', 'flagged', 'run_id']
-        )
-    conn.commit()
-    conn.close()
-    print(f"Logged {len(all_flagged):,} flagged records into 'anomalies' table.")
-
-    # 6. Save Anomaly Detection Report
+    # 5. Generate Markdown Report
+    top_samples = anom_df.sort_values("excess_amt", ascending=False).head(10)
     report_lines = [
-        "# Anomaly Detection Benchmark Report",
+        "# Anomaly Detection Benchmark Report (Feature/Full-App-V2 Methodology)",
         "",
         "## 1. Overview & Setup",
-        f"- **Total Transactions Evaluated:** {len(df):,}",
-        f"- **Train Period:** Inception through {train_cutoff_date}",
-        f"- **Test Period:** Post-{train_cutoff_date} ({len(y_test_true):,} transactions)",
-        f"- **Test Ground-Truth Fraud Cases:** {y_test_true.sum():,} ({fraud_rate:.3f}% base rate)",
+        "- **Methodology Source:** `feature/full-app-v2` (`spending_analytics.py`)",
+        "- **Technique:** Multi-Tier Robust Thresholding (Tukey's Upper Fence Q3 + 1.5 * IQR & Scaled MAD)",
+        f"- **Dataset:** `fraudTrain.csv` (150,000 transaction sample)",
+        f"- **Historical Training Window:** 8 Weeks ({min_date} to {split_date})",
+        f"- **Evaluation Period Transactions:** {len(test_df):,}",
         "",
-        "## 2. Model Performance (Evaluated against Ground-Truth is_fraud)",
-        "| Method | Precision | Recall | PR-AUC | Total Flagged |",
-        "| :--- | :---: | :---: | :---: | :---: |",
-        f"| **Robust Z-Score / IQR** | {prec_iqr:.4f} | {rec_iqr:.4f} | {prauc_iqr:.4f} | {len(flagged_iqr_df):,} |",
-        f"| **Isolation Forest** | {prec_iso:.4f} | {rec_iso:.4f} | {prauc_iso:.4f} | {len(flagged_iso_df):,} |",
+        "## 2. Detection Performance Summary",
+        "| Metric | Value |",
+        "| :--- | :---: |",
+        f"| **Test Transactions Evaluated** | {len(test_df):,} |",
+        f"| **Anomalies Flagged** | {len(anom_df):,} ({len(anom_df)/len(test_df)*100:.2f}%) |",
+        f"| **Ground-Truth Fraud Cases in Test** | {test_df['is_fraud'].sum():,} |",
+        f"| **Fraud Recall (True Positive Rate)** | {recall:.4f} ({recall*100:.1f}%) |",
+        f"| **Precision** | {precision:.4f} |",
         "",
-        "## 3. Analysis & Key Findings",
-        "- **Why PR-AUC instead of ROC-AUC/Accuracy?** Given the severe class imbalance (fraud occurrence is < 0.6%), accuracy is meaningless. PR-AUC and precision/recall directly capture the actionable utility for fraud investigators.",
-        "- **Robust IQR vs Isolation Forest:** Robust IQR flags extreme spend outliers relative to the individual user's personal category baseline, yielding high recall on high-value fraud transactions. Isolation Forest captures multidimensional interactions (distance from home, time since previous transaction, and odd hours).",
-        "- **Database Logging:** All detected anomalies are written with foreign-key references to `transactions(trans_num)` for real-time investigation."
+        "## 3. Sample Top Flagged Transactions",
+        "",
+        top_samples[["user_id", "category", "date", "amount", "threshold", "excess_amt", "method"]].to_markdown(index=False),
+        "",
+        "## 4. Key Strengths of Full-App-V2 Methodology",
+        "- **Non-parametric & Robust:** Does not assume normal distribution, preventing single outlier distortion.",
+        "- **Zero-dispersion Handling:** Seamlessly falls back to Scaled MAD or median doubling when series variance is zero.",
+        "- **Per-User Category Resolution:** An amount that is standard for `travel` or `grocery_pos` is not falsely flagged, while an abnormal jump in `entertainment` is detected."
     ]
 
     report_path = REPORTS_DIR / "anomaly_report.md"
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(report_lines) + "\n")
     print(f"Saved anomaly report to {report_path}")
 

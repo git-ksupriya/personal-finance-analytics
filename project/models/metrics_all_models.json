@@ -1,0 +1,98 @@
+{
+  "LSTM": {
+    "model": "Multi-Step LSTM",
+    "overall_mae": 20.12,
+    "overall_rmse": 79.21,
+    "overall_r2": -0.0054,
+    "per_day_mae": [
+      18.71,
+      23.05,
+      21.74,
+      18.61,
+      17.09,
+      15.51,
+      26.13
+    ],
+    "per_day_rmse": [
+      54.23,
+      63.31,
+      65.21,
+      52.35,
+      78.36,
+      90.76,
+      124.9
+    ]
+  },
+  "SimpleRNN": {
+    "model": "Multi-Step SimpleRNN",
+    "overall_mae": 24.39,
+    "overall_rmse": 79.52,
+    "overall_r2": -0.0255,
+    "per_day_mae": [
+      19.22,
+      30.32,
+      27.59,
+      35.26,
+      18.02,
+      18.38,
+      21.95
+    ],
+    "per_day_rmse": [
+      54.19,
+      63.98,
+      65.42,
+      55.61,
+      78.26,
+      90.23,
+      124.87
+    ]
+  },
+  "CNN": {
+    "model": "1D-CNN Sequence",
+    "overall_mae": 22.2,
+    "overall_rmse": 79.36,
+    "overall_r2": -0.012,
+    "per_day_mae": [
+      23.26,
+      21.12,
+      20.48,
+      23.05,
+      19.8,
+      26.52,
+      21.18
+    ],
+    "per_day_rmse": [
+      55.01,
+      63.15,
+      64.94,
+      52.75,
+      78.34,
+      91.6,
+      124.66
+    ]
+  },
+  "XGBoost": {
+    "model": "XGBoost MultiOutput",
+    "overall_mae": 22.62,
+    "overall_rmse": 86.25,
+    "overall_r2": -0.4154,
+    "per_day_mae": [
+      21.9,
+      22.45,
+      23.26,
+      22.4,
+      22.48,
+      23.75,
+      22.13
+    ],
+    "per_day_rmse": [
+      55.5,
+      63.38,
+      69.63,
+      100.05,
+      79.3,
+      90.65,
+      124.92
+    ]
+  }
+}
