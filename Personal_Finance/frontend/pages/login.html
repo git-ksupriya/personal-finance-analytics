@@ -141,14 +141,14 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                showError(data.detail || 'Login failed. Please check credentials.');
+                showError(data.detail || `Login failed (Status: ${res.status}).`);
                 return;
             }
             window.location.href = data.redirect || '/pages/analytics.html';
         } catch (err) {
-            showError('Network error connecting to backend service.');
+            showError(`Network error: ${err.message || 'Connecting to backend service failed.'}`);
         }
     }
 
@@ -168,14 +168,14 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, name, email, password })
             });
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                showError(data.detail || 'Signup failed.');
+                showError(data.detail || `Signup failed (Status: ${res.status}).`);
                 return;
             }
             window.location.href = data.redirect || '/pages/onboarding.html';
         } catch (err) {
-            showError('Network error connecting to backend service.');
+            showError(`Network error: ${err.message || 'Connecting to backend service failed.'}`);
         }
     }
 

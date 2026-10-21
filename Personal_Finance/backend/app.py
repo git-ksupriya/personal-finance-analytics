@@ -90,6 +90,48 @@ def get_connection():
     )
 
 
+def run_migrations_if_needed():
+    try:
+        conn = get_connection()
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'users'
+                );
+            """)
+            exists = cur.fetchone()[0]
+            if not exists:
+                print("Database tables missing. Running migrations...")
+                migrations_dir = BASE_DIR.parent / "dbms" / "migrations"
+                migration_files = sorted(migrations_dir.glob("*.sql"))
+                for mf in migration_files:
+                    print(f"Applying migration {mf.name}...")
+                    sql = mf.read_text(encoding="utf-8")
+                    cur.execute(sql)
+                print("All migrations applied successfully!")
+            else:
+                print("Database tables already initialized.")
+        conn.close()
+    except Exception as e:
+        print(f"Error checking/running migrations: {e}")
+
+
+@app.on_event("startup")
+def startup_event():
+    run_migrations_if_needed()
+
+
+@app.get("/api/migrate")
+def trigger_migration():
+    try:
+        run_migrations_if_needed()
+        return {"status": "success", "message": "Migrations verified/executed"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 # =========================================================
 # AUTH UTILITIES
 # =========================================================
