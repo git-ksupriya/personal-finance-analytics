@@ -40,7 +40,7 @@ def main():
     df = Feature_Extraction.calculate_rolling_average(df)
     print("3. Feature extraction complete:", df.shape)
 
-    # 5. Sequence preparation for 7-day multi-step LSTM / RNN forecasting
+    # 5. Create monthly-expense sequences for the monthly LSTM.
     prep = sequence_preparation.SequencePreparation(window_size=10, future_steps=7)
 
     df = prep.sort_transactions(df)
@@ -71,16 +71,10 @@ def main():
     print("   X_train_final:", X_train_final.shape)
     print("   X_test_final :", X_test_final.shape)
 
-    # 6. Autoencoder data
-    auto_data = prep.prepare_autoencoder(df)
-    print("7. Autoencoder preparation complete")
-
-    # 7. Save outputs
-    processed_dir = os.path.join(base_dir, "processed")
-    ml_models_dir = os.path.abspath(os.path.join(base_dir, "..", "ml", "models"))
+    # 6. Save outputs used by the monthly overall LSTM.
+    processed_dir = os.path.join(base_dir, "processed", "monthly")
 
     os.makedirs(processed_dir, exist_ok=True)
-    os.makedirs(ml_models_dir, exist_ok=True)
 
     np.save(os.path.join(processed_dir, "X_train.npy"), X_train_final)
     np.save(os.path.join(processed_dir, "X_test.npy"), X_test_final)
@@ -91,17 +85,9 @@ def main():
     np.save(os.path.join(processed_dir, "y_train_raw.npy"), y_train)
     np.save(os.path.join(processed_dir, "y_test_raw.npy"), y_test)
 
-    # Save scaler in both processed and ml/models
+    # Keep monthly training artifacts separate from legacy transaction models.
     prep.save_scaler(os.path.join(processed_dir, "scaler.pkl"))
-    prep.save_scaler(os.path.join(ml_models_dir, "scaler.pkl"))
 
-    df.to_csv(os.path.join(processed_dir, "feature_engineered_dataset.csv"), index=False)
-
-    if isinstance(auto_data, np.ndarray):
-        np.save(os.path.join(processed_dir, "autoencoder_data.npy"), auto_data)
-    else:
-        auto_data.to_csv(os.path.join(processed_dir, "autoencoder_data.csv"), index=False)
-
-    print("8. All preprocessing outputs saved.")
+    print("7. Monthly overall LSTM preprocessing outputs saved.")
 
 main()

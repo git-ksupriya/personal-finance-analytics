@@ -9,8 +9,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend /app/backend
 COPY frontend /app/frontend
-COPY ml/lstm/train_lstm.py /app/ml/lstm/train_lstm.py
-COPY ml/lstm/lstm_model.pt /app/ml/lstm/lstm_model.pt
+COPY ml/lstm /app/ml/lstm
 COPY ml/lstm_categories/train_lstm.py /app/ml/lstm_categories/train_lstm.py
 COPY ml/lstm_categories/preprocessing /app/ml/lstm_categories/preprocessing
 COPY ml/lstm_categories/models /app/ml/lstm_categories/models

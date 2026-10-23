@@ -10,22 +10,22 @@ class CategorySequencePreparation:
 
     def __init__(
         self,
-        history_days=90,
-        forecast_days=7,
+        history_months=12,
+        forecast_months=7,
         train_ratio=0.8
     ):
 
-        self.history_days = history_days
-        self.forecast_days = forecast_days
+        self.history_months = history_months
+        self.forecast_months = forecast_months
         self.train_ratio = train_ratio
 
         self.feature_columns = [
-            "daily_spending",
-            "weekday_sin",
-            "weekday_cos",
+            "monthly_spending",
             "month_sin",
             "month_cos",
-            "is_weekend"
+            "quarter_sin",
+            "quarter_cos",
+            "days_in_month",
         ]
 
     # --------------------------------------------------
@@ -75,8 +75,8 @@ class CategorySequencePreparation:
             )
 
             if len(group) < (
-                self.history_days
-                + self.forecast_days
+                self.history_months
+                + self.forecast_months
             ):
                 continue
 
@@ -90,8 +90,8 @@ class CategorySequencePreparation:
             ]
 
             if len(train_group) < (
-                self.history_days
-                + self.forecast_days
+                self.history_months
+                + self.forecast_months
             ):
                 continue
 
@@ -105,7 +105,7 @@ class CategorySequencePreparation:
 
             target_values = (
                 train_group[
-                    "daily_spending"
+                    "monthly_spending"
                 ]
                 .values
                 .astype(np.float32)
@@ -114,25 +114,25 @@ class CategorySequencePreparation:
             for i in range(
                 len(train_group)
                 -
-                self.history_days
+                self.history_months
                 -
-                self.forecast_days
+                self.forecast_months
                 + 1
             ):
 
                 X.append(
                     feature_values[
                         i:
-                        i + self.history_days
+                        i + self.history_months
                     ]
                 )
 
                 y.append(
                     target_values[
-                        i + self.history_days:
+                        i + self.history_months:
                         i
-                        + self.history_days
-                        + self.forecast_days
+                        + self.history_months
+                        + self.forecast_months
                     ]
                 )
 
@@ -142,14 +142,14 @@ class CategorySequencePreparation:
                     "forecast_start": train_group[
                         "date"
                     ].iloc[
-                        i + self.history_days
+                        i + self.history_months
                     ],
                     "forecast_end": train_group[
                         "date"
                     ].iloc[
                         i
-                        + self.history_days
-                        + self.forecast_days
+                        + self.history_months
+                        + self.forecast_months
                         - 1
                     ]
                 })
@@ -201,12 +201,12 @@ class CategorySequencePreparation:
             if split_idx >= len(group):
                 continue
 
-            # Include the final 90 days before
+            # Include the final 12 months before
             # the split as available history.
             context_start = max(
                 0,
                 split_idx
-                - self.history_days
+                - self.history_months
             )
 
             evaluation_group = group.iloc[
@@ -214,8 +214,8 @@ class CategorySequencePreparation:
             ].copy()
 
             if len(evaluation_group) < (
-                self.history_days
-                + self.forecast_days
+                self.history_months
+                + self.forecast_months
             ):
                 continue
 
@@ -229,7 +229,7 @@ class CategorySequencePreparation:
 
             target_values = (
                 evaluation_group[
-                    "daily_spending"
+                    "monthly_spending"
                 ]
                 .values
                 .astype(np.float32)
@@ -242,9 +242,9 @@ class CategorySequencePreparation:
             # Every target window must begin
             # at or after the test boundary.
             for i in range(
-                self.history_days,
+                self.history_months,
                 len(evaluation_group)
-                - self.forecast_days
+                - self.forecast_months
                 + 1
             ):
 
@@ -257,7 +257,7 @@ class CategorySequencePreparation:
 
                 X.append(
                     feature_values[
-                        i - self.history_days:
+                        i - self.history_months:
                         i
                     ]
                 )
@@ -265,7 +265,7 @@ class CategorySequencePreparation:
                 y.append(
                     target_values[
                         i:
-                        i + self.forecast_days
+                        i + self.forecast_months
                     ]
                 )
 
@@ -274,7 +274,7 @@ class CategorySequencePreparation:
                     "category": category,
                     "forecast_start": dates[i],
                     "forecast_end": dates[
-                        i + self.forecast_days - 1
+                        i + self.forecast_months - 1
                     ]
                 })
 
@@ -306,7 +306,7 @@ class CategorySequencePreparation:
         # Scale spending only.
         self.scaler.fit(
             train_df[
-                ["daily_spending"]
+                ["monthly_spending"]
             ].values
         )
 
@@ -392,12 +392,13 @@ def main():
     input_path = os.path.join(
         base_dir,
         "processed",
-        "daily_category_spending.csv"
+        "monthly_category_spending.csv"
     )
 
     output_dir = os.path.join(
         base_dir,
-        "processed"
+        "processed",
+        "monthly"
     )
 
     os.makedirs(
@@ -414,8 +415,8 @@ def main():
     )
 
     prep = CategorySequencePreparation(
-        history_days=90,
-        forecast_days=7,
+        history_months=12,
+        forecast_months=7,
         train_ratio=0.8
     )
 
@@ -479,11 +480,6 @@ def main():
     # --------------------------------------------------
     # Fit scaler ONLY using training period
     # --------------------------------------------------
-
-    train_mask = np.zeros(
-        len(df),
-        dtype=bool
-    )
 
     # Build a dataframe consisting of only
     # pre-split rows for every user/category.

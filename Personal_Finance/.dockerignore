@@ -27,7 +27,11 @@ personal_finance_dump.sql
 ml/lstm/lstm_metrics.json
 ml/lstm/lstm_report.md
 ml/lstm/lstm_results.csv
+ml/lstm/monthly/lstm_metrics.json
+ml/lstm/monthly/lstm_report.md
+ml/lstm/monthly/lstm_results.csv
 ml/lstm_categories/models/category_lstm_metrics.csv
+ml/lstm_categories/models/monthly/category_lstm_metrics.csv
 ml/lstm_categories/models/**/metrics.json
 ml/lstm_categories/models/**/predictions.csv
 

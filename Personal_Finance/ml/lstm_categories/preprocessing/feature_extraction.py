@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 import numpy as np
 
@@ -186,6 +187,67 @@ def add_calendar_features(df):
     return df
 
 
+def aggregate_monthly_category_spending(df):
+    return (
+        df.assign(month=df["date"].dt.to_period("M").dt.to_timestamp())
+        .groupby(["user_id", "category", "month"], as_index=False)["amount"]
+        .sum()
+        .rename(columns={"month": "date", "amount": "monthly_spending"})
+    )
+
+
+def create_complete_monthly_series(monthly_df, user_coverage=None):
+    results = []
+    user_bounds = user_coverage or (
+        monthly_df.groupby("user_id")["date"]
+        .agg(["min", "max"])
+        .to_dict("index")
+    )
+    for (user_id, category), group in monthly_df.groupby(["user_id", "category"]):
+        bounds = user_bounds[user_id]
+        first_date = pd.Timestamp(bounds["min"])
+        last_date = pd.Timestamp(bounds["max"])
+        first_month = first_date.to_period("M")
+        last_month = last_date.to_period("M")
+        if first_date.date() > first_month.start_time.date():
+            first_month += 1
+        if last_date.date() < last_month.end_time.date():
+            last_month -= 1
+        if first_month > last_month:
+            continue
+        months = pd.period_range(
+            first_month,
+            last_month,
+            freq="M",
+        ).to_timestamp()
+        complete = (
+            group.set_index("date")["monthly_spending"]
+            .reindex(months, fill_value=0.0)
+            .rename_axis("date")
+            .reset_index()
+        )
+        complete["user_id"] = user_id
+        complete["category"] = category
+        results.append(complete)
+    if not results:
+        return pd.DataFrame(
+            columns=["user_id", "category", "date", "monthly_spending"]
+        )
+    return pd.concat(results, ignore_index=True)
+
+
+def add_monthly_calendar_features(df):
+    df = df.copy()
+    month = df["date"].dt.month
+    quarter = df["date"].dt.quarter
+    df["month_sin"] = np.sin(2 * np.pi * month / 12)
+    df["month_cos"] = np.cos(2 * np.pi * month / 12)
+    df["quarter_sin"] = np.sin(2 * np.pi * quarter / 4)
+    df["quarter_cos"] = np.cos(2 * np.pi * quarter / 4)
+    df["days_in_month"] = df["date"].dt.days_in_month / 31.0
+    return df
+
+
 def create_category_dataset(
     input_path,
     output_path
@@ -252,6 +314,23 @@ def create_category_dataset(
     return daily
 
 
+def create_monthly_category_dataset(input_path, output_path):
+    df = load_dataset(input_path)
+    coverage = (
+        df.dropna(subset=["user_id", "date"])
+        .groupby("user_id")["date"]
+        .agg(["min", "max"])
+        .to_dict("index")
+    )
+    expenses = prepare_expense_data(df)
+    monthly = aggregate_monthly_category_spending(expenses)
+    monthly = create_complete_monthly_series(monthly, coverage)
+    monthly = add_monthly_calendar_features(monthly)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    monthly.to_csv(output_path, index=False)
+    return monthly
+
+
 if __name__ == "__main__":
 
     base_dir = os.path.dirname(
@@ -276,7 +355,17 @@ if __name__ == "__main__":
         "daily_category_spending.csv"
     )
 
-    create_category_dataset(
-        input_path,
-        output_path
-    )
+    if sys.argv[1:] == ["--monthly-only"]:
+        create_monthly_category_dataset(
+            input_path,
+            os.path.join(
+                base_dir,
+                "processed",
+                "monthly_category_spending.csv",
+            ),
+        )
+    else:
+        create_category_dataset(
+            input_path,
+            output_path
+        )

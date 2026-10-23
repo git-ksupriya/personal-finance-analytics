@@ -12,8 +12,10 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 torch.manual_seed(42)
 np.random.seed(42)
 
+FORECAST_MONTHS = 7
+
 class LSTMModel(nn.Module):
-    def __init__(self, input_size=1, hidden_size=64, num_layers=2, output_size=7, dropout=0.2):
+    def __init__(self, input_size=1, hidden_size=64, num_layers=2, output_size=FORECAST_MONTHS, dropout=0.2):
         super(LSTMModel, self).__init__()
         self.lstm = nn.LSTM(
             input_size=input_size,
@@ -39,21 +41,20 @@ class LSTMModel(nn.Module):
 def train_lstm(epochs=40, batch_size=64, learning_rate=0.001):
     lstm_dir = os.path.dirname(os.path.abspath(__file__))
     ml_dir = os.path.abspath(os.path.join(lstm_dir, ".."))
-    processed_dir = os.path.abspath(os.path.join(ml_dir, "..", "preprocessing", "processed"))
-    utils_dir = os.path.join(ml_dir, "utils")
-    os.makedirs(lstm_dir, exist_ok=True)
-    os.makedirs(utils_dir, exist_ok=True)
+    processed_dir = os.path.abspath(
+        os.path.join(ml_dir, "..", "preprocessing", "processed", "monthly")
+    )
+    monthly_model_dir = os.path.join(lstm_dir, "monthly")
+    os.makedirs(monthly_model_dir, exist_ok=True)
 
-    print("--- Loading Preprocessed Data for 7-Day Multi-Step LSTM ---")
+    print("--- Loading Monthly Expense Sequences for 7-Month LSTM ---")
     X_train = np.load(os.path.join(processed_dir, "X_train.npy"))
     X_test = np.load(os.path.join(processed_dir, "X_test.npy"))
     y_train = np.load(os.path.join(processed_dir, "y_train.npy"))
     y_test = np.load(os.path.join(processed_dir, "y_test.npy"))
     y_test_raw = np.load(os.path.join(processed_dir, "y_test_raw.npy"))
 
-    scaler_path = os.path.join(utils_dir, "scaler.pkl")
-    if not os.path.exists(scaler_path):
-        scaler_path = os.path.join(processed_dir, "scaler.pkl")
+    scaler_path = os.path.join(processed_dir, "scaler.pkl")
     scaler = joblib.load(scaler_path)
 
     # Convert to Tensors
@@ -65,7 +66,13 @@ def train_lstm(epochs=40, batch_size=64, learning_rate=0.001):
     train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    model = LSTMModel(input_size=1, hidden_size=64, num_layers=2, output_size=7, dropout=0.2)
+    model = LSTMModel(
+        input_size=1,
+        hidden_size=64,
+        num_layers=2,
+        output_size=FORECAST_MONTHS,
+        dropout=0.2,
+    )
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -107,33 +114,35 @@ def train_lstm(epochs=40, batch_size=64, learning_rate=0.001):
     print(f"Raw Overall MAE    : INR {mae_raw_overall:.2f}")
     print(f"Raw Overall R²     : {r2_raw_overall:.4f}")
 
-    # Compute per-day breakdown metrics
-    per_day_metrics = {}
-    print("\n--- Per-Day Forecasting Performance (Day 1 to 7) ---")
-    for d in range(7):
-        day_actual = y_test_raw[:, d]
-        day_pred = test_preds_raw[:, d]
-        d_rmse = np.sqrt(mean_squared_error(day_actual, day_pred))
-        d_mae = mean_absolute_error(day_actual, day_pred)
-        d_r2 = r2_score(day_actual, day_pred)
-        per_day_metrics[f"Day_{d+1}"] = {
-            "rmse_inr": float(d_rmse),
-            "mae_inr": float(d_mae),
-            "r2_score": float(d_r2)
+    per_month_metrics = {}
+    print("\n--- Per-Month Forecasting Performance ---")
+    for month in range(FORECAST_MONTHS):
+        month_actual = y_test_raw[:, month]
+        month_pred = test_preds_raw[:, month]
+        month_rmse = np.sqrt(mean_squared_error(month_actual, month_pred))
+        month_mae = mean_absolute_error(month_actual, month_pred)
+        month_r2 = r2_score(month_actual, month_pred)
+        per_month_metrics[f"Month_{month+1}"] = {
+            "rmse_inr": float(month_rmse),
+            "mae_inr": float(month_mae),
+            "r2_score": float(month_r2)
         }
-        print(f"  Day {d+1}: RMSE = INR {d_rmse:8.2f} | MAE = INR {d_mae:8.2f} | R² = {d_r2:.4f}")
+        print(
+            f"  Month {month+1}: RMSE = INR {month_rmse:8.2f} | "
+            f"MAE = INR {month_mae:8.2f} | R² = {month_r2:.4f}"
+        )
 
-    # 1. Save Model Weights
-    model_path = os.path.join(lstm_dir, "lstm_model.pt")
+    model_path = os.path.join(monthly_model_dir, "lstm_model.pt")
     torch.save(model.state_dict(), model_path)
     print(f"\nLSTM model weights saved to {model_path}")
+    joblib.dump(scaler, os.path.join(monthly_model_dir, "scaler.pkl"))
 
-    # 2. Save Metrics JSON
     metrics = {
-        "model_name": "Multi-Step 7-Day LSTM Spending Predictor",
+        "model_name": "Multi-Step 7-Month LSTM Spending Predictor",
         "model_type": "LSTM",
-        "input_timesteps": 10,
-        "forecast_horizon_days": 7,
+        "input_timesteps_months": 10,
+        "forecast_horizon_months": FORECAST_MONTHS,
+        "target_unit": "INR per calendar month",
         "epochs": epochs,
         "batch_size": batch_size,
         "scaled_overall_mse": float(mse_scaled),
@@ -141,31 +150,30 @@ def train_lstm(epochs=40, batch_size=64, learning_rate=0.001):
         "raw_overall_rmse": float(rmse_raw_overall),
         "raw_overall_mae": float(mae_raw_overall),
         "raw_overall_r2": float(r2_raw_overall),
-        "per_day_metrics": per_day_metrics
+        "per_month_metrics": per_month_metrics
     }
 
-    metrics_path = os.path.join(lstm_dir, "lstm_metrics.json")
+    metrics_path = os.path.join(monthly_model_dir, "lstm_metrics.json")
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=4)
     print(f"LSTM metrics saved to {metrics_path}")
 
-    # 3. Save Test Predictions CSV
     res_df = pd.DataFrame()
-    for d in range(7):
-        res_df[f"Actual_Day_{d+1}"] = y_test_raw[:, d].round(2)
-        res_df[f"Pred_Day_{d+1}"] = test_preds_raw[:, d].round(2)
+    for month in range(FORECAST_MONTHS):
+        res_df[f"Actual_Month_{month+1}"] = y_test_raw[:, month].round(2)
+        res_df[f"Pred_Month_{month+1}"] = test_preds_raw[:, month].round(2)
     
-    results_csv_path = os.path.join(lstm_dir, "lstm_results.csv")
+    results_csv_path = os.path.join(monthly_model_dir, "lstm_results.csv")
     res_df.to_csv(results_csv_path, index=False)
     print(f"LSTM test predictions saved to {results_csv_path}")
 
     # 4. Generate Report MD
-    report_md = f"""# LSTM 7-Day Multi-Step Spending Forecast Report
+    report_md = f"""# LSTM 7-Month Multi-Step Spending Forecast Report
 
 ## 📌 Model Overview
 - **Architecture**: 2-Layer PyTorch LSTM (`hidden_size=64, dropout=0.2`) -> Dense(32) -> Output(7)
 - **Input Sequence Length**: 10 past spending timesteps
-- **Forecast Horizon**: Next 7 spending days/steps
+- **Forecast Horizon**: Next {FORECAST_MONTHS} calendar-month expense totals
 - **Epochs Trained**: {epochs}
 
 ---
@@ -179,30 +187,33 @@ def train_lstm(epochs=40, batch_size=64, learning_rate=0.001):
 
 ---
 
-## 📅 Day-by-Day Forecast Performance
+## 📅 Month-by-Month Forecast Performance
 
-| Day Horizon | RMSE (INR) | MAE (INR) | $R^2$ Score |
+| Month Horizon | RMSE (INR) | MAE (INR) | $R^2$ Score |
 |---|---|---|---|
 """
-    for d in range(7):
-        m = per_day_metrics[f"Day_{d+1}"]
-        report_md += f"| Day {d+1} | INR {m['rmse_inr']:,.2f} | INR {m['mae_inr']:,.2f} | {m['r2_score']:.4f} |\n"
+    for month in range(FORECAST_MONTHS):
+        m = per_month_metrics[f"Month_{month+1}"]
+        report_md += f"| Month {month+1} | INR {m['rmse_inr']:,.2f} | INR {m['mae_inr']:,.2f} | {m['r2_score']:.4f} |\n"
 
     report_md += f"""
 ---
 
-## 🔮 Sample 7-Day Test Predictions
+## 🔮 Sample Monthly Test Predictions
 
-Below are 5 sample 7-day spending forecasts generated by the trained LSTM model:
+Below are sample seven-month spending forecasts generated by the trained LSTM model:
 
-| Sample | Forecast Horizon (Day 1 → Day 7) Predicted Amounts (INR) |
+| Sample | Forecast Horizon (Month 1 → Month 7) Predicted Amounts (INR) |
 |---|---|
 """
     for i in range(min(5, len(res_df))):
-        sample_preds = [f"INR {res_df.loc[i, f'Pred_Day_{d+1}']:,.2f}" for d in range(7)]
+        sample_preds = [
+            f"INR {res_df.loc[i, f'Pred_Month_{month+1}']:,.2f}"
+            for month in range(FORECAST_MONTHS)
+        ]
         report_md += f"| Sample {i+1} | {', '.join(sample_preds)} |\n"
 
-    report_path = os.path.join(lstm_dir, "lstm_report.md")
+    report_path = os.path.join(monthly_model_dir, "lstm_report.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report_md)
     print(f"LSTM human-readable report saved to {report_path}")

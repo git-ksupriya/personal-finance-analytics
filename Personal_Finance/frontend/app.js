@@ -57,6 +57,56 @@ async function setupOnboarding() {
     if (!container) return;
     try {
         const categories = await loadCategories();
+        const recurringContainer = document.getElementById("recurring-payments");
+        const addRecurringRow = () => {
+            const row = document.createElement("div");
+            row.className = "recurring-row";
+            const fields = [
+                ["Payment type", "select", "recurring_payment_type[]", ["income", "expenditure"]],
+                ["Category", "select", "recurring_category[]", categories],
+                ["Description", "text", "recurring_description[]"],
+                ["Amount (INR)", "number", "recurring_amount[]"],
+                ["Next due date", "date", "recurring_next_due_date[]"],
+            ];
+            for (const [labelText, type, name, options] of fields) {
+                const label = document.createElement("label");
+                label.textContent = labelText;
+                const input = type === "select"
+                    ? document.createElement("select")
+                    : document.createElement("input");
+                input.name = name;
+                if (type === "select") {
+                    for (const value of options) {
+                        const option = document.createElement("option");
+                        option.value = value;
+                        option.textContent = value;
+                        input.append(option);
+                    }
+                } else {
+                    input.type = type;
+                    input.required = true;
+                    if (type === "number") {
+                        input.min = "0.01";
+                        input.step = "0.01";
+                    } else if (name === "recurring_description[]") {
+                        input.maxLength = 500;
+                    } else {
+                        input.value = new Date().toISOString().slice(0, 10);
+                    }
+                }
+                label.append(input);
+                row.append(label);
+            }
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "secondary";
+            remove.textContent = "Remove";
+            remove.addEventListener("click", () => row.remove());
+            row.append(remove);
+            recurringContainer.append(row);
+        };
+        document.getElementById("add-recurring-payment")
+            ?.addEventListener("click", addRecurringRow);
         container.replaceChildren();
         for (const category of categories) {
             const label = document.createElement("label");
@@ -140,7 +190,7 @@ function renderTableRows(body, rows, emptyText, renderRow) {
     if (!rows.length) {
         const row = body.insertRow();
         const cell = row.insertCell();
-        cell.colSpan = 4;
+        cell.colSpan = body.closest("table").querySelectorAll("thead th").length;
         cell.textContent = emptyText;
         return;
     }
@@ -153,6 +203,10 @@ function renderTableRows(body, rows, emptyText, renderRow) {
 function renderDashboard(data) {
     document.getElementById("actual-spending").textContent = money(data.actual_monthly_spending);
     document.getElementById("overall-budget").textContent = money(data.monthly_budget);
+    document.getElementById("recurring-income").textContent = money(data.recurring_monthly_income);
+    document.getElementById("recurring-expenditure").textContent = money(data.recurring_monthly_expenditure);
+    document.getElementById("total-spendable").textContent = money(data.total_spendable_amount);
+    document.getElementById("net-spendable").textContent = money(data.net_after_recurring_obligations);
     document.getElementById("projected-spending").textContent = money(data.projected_monthly_spending);
     document.getElementById("projected-budget").textContent = money(data.monthly_budget);
     document.getElementById("projection-note").textContent =
@@ -163,7 +217,8 @@ function renderDashboard(data) {
         overall.replaceChildren();
         data.overall_lstm.values.forEach((value, index) => {
             const item = document.createElement("span");
-            item.textContent = `Step ${index + 1}: ${money(value)}`;
+            const month = data.overall_lstm.target_periods?.[index] || "Unknown month";
+            item.textContent = `${month.slice(0, 7)}: ${money(value)}`;
             overall.append(item);
         });
     } else {
@@ -178,7 +233,7 @@ function renderDashboard(data) {
     renderTableRows(
         document.getElementById("category-projections"),
         categories,
-        data.category_inference.reason || "No category forecasts available.",
+        data.category_inference.reason || "No monthly category forecasts available.",
         (row, item) => {
             [item.name, money(item.actual_month), money(item.projected_month), money(item.budget)]
                 .forEach((value) => (row.insertCell().textContent = value));
@@ -203,13 +258,43 @@ function renderDashboard(data) {
             alertList.append(item);
         }
     }
+    const anomalyList = document.getElementById("anomalies-list");
+    anomalyList.replaceChildren();
+    if (!data.anomalies.length) {
+        const message = document.createElement("p");
+        message.textContent = "No unusual spending detected.";
+        anomalyList.append(message);
+    } else {
+        for (const anomaly of data.anomalies) {
+            const item = document.createElement("article");
+            item.className = "alert alert-yellow";
+            const title = document.createElement("strong");
+            title.textContent = `${anomaly.type === "predicted" ? "Predicted" : "Actual"} unusual spending · ${anomaly.scope}`;
+            const text = document.createElement("p");
+            text.textContent = `${anomaly.target_period || "Forecast"}: observed ${money(anomaly.observed_amount)}, threshold ${money(anomaly.threshold_amount)}. ${anomaly.reason || ""}`;
+            item.append(title, text);
+            anomalyList.append(item);
+        }
+    }
+
+    const recurringList = document.getElementById("recurring-list");
+    recurringList.replaceChildren();
+    if (!data.recurring_payments.length) {
+        recurringList.textContent = "No recurring items configured.";
+    } else {
+        for (const payment of data.recurring_payments) {
+            const item = document.createElement("p");
+            item.textContent = `${payment.payment_type || "Unclassified"} · ${payment.category} · ${payment.description} · ${money(payment.amount)} monthly`;
+            recurringList.append(item);
+        }
+    }
 
     renderTableRows(
         document.getElementById("transactions-list"),
         data.transactions,
         "No transactions yet.",
         (row, item) => {
-            [item.date, item.description, item.category, money(item.amount)]
+            [item.date, item.type, item.description, item.category, money(item.amount)]
                 .forEach((value) => (row.insertCell().textContent = value));
         },
     );
@@ -250,7 +335,12 @@ async function setupDashboard() {
     }
 
     const dateInput = document.querySelector('#transaction-form input[name="date"]');
+    const transactionType = document.getElementById("transaction-type");
+    const transactionSubmit = document.getElementById("transaction-submit");
     if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+    transactionType?.addEventListener("change", () => {
+        transactionSubmit.textContent = `Add ${transactionType.value.toLowerCase()}`;
+    });
     document.getElementById("refresh-button")?.addEventListener("click", refreshDashboard);
     document.getElementById("transaction-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();

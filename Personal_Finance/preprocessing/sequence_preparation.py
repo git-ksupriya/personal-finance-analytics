@@ -38,7 +38,54 @@ class SequencePreparation:
 
         for user_id, user_data in grouped:
 
-            amounts = user_data["amount"].values
+            monthly_data = user_data.copy()
+            coverage_dates = pd.to_datetime(
+                monthly_data["date"], errors="coerce"
+            ).dropna()
+            if coverage_dates.empty:
+                continue
+            first_date = coverage_dates.min()
+            last_date = coverage_dates.max()
+            first_month = first_date.to_period("M")
+            last_month = last_date.to_period("M")
+            if first_date.date() > first_month.start_time.date():
+                first_month += 1
+            if last_date.date() < last_month.end_time.date():
+                last_month -= 1
+            if first_month > last_month:
+                continue
+
+            monthly_data["date"] = pd.to_datetime(
+                monthly_data["date"], errors="coerce"
+            )
+            monthly_data["amount"] = pd.to_numeric(
+                monthly_data["amount"], errors="coerce"
+            )
+            monthly_data = monthly_data.dropna(
+                subset=["date", "amount"]
+            )
+            if "transaction_type" in monthly_data:
+                monthly_data = monthly_data[
+                    monthly_data["transaction_type"]
+                    .astype(str)
+                    .str.strip()
+                    .str.casefold()
+                    .eq("expense")
+                ]
+            if monthly_data.empty:
+                continue
+
+            monthly_data["amount"] = monthly_data["amount"].abs()
+            monthly_data["month"] = monthly_data["date"].dt.to_period("M")
+            monthly_amounts = monthly_data.groupby("month")["amount"].sum()
+            complete_months = pd.period_range(
+                first_month,
+                last_month,
+                freq="M",
+            )
+            amounts = monthly_amounts.reindex(
+                complete_months, fill_value=0.0
+            ).to_numpy()
 
             if len(amounts) < total_required:
                 continue

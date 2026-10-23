@@ -203,6 +203,21 @@ button:disabled {
     gap: 12px;
 }
 
+.recurring-list {
+    display: grid;
+    gap: 12px;
+}
+
+.recurring-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
+    align-items: end;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+}
+
 .form-actions, .header-actions {
     display: flex;
     flex-wrap: wrap;
@@ -381,6 +396,10 @@ button:disabled {
     .chart-card, .category-card {
         grid-column: span 2;
     }
+
+    .recurring-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 600px) {
@@ -395,6 +414,10 @@ button:disabled {
 
     .chart-card, .category-card, .transaction-form .wide {
         grid-column: auto;
+    }
+
+    .recurring-row {
+        grid-template-columns: 1fr;
     }
 
     .donut-chart {
