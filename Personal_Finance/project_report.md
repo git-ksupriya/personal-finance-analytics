@@ -17,63 +17,36 @@ We built a web application for recording personal transactions and reviewing spe
 
 Manual transaction records become difficult to summarize consistently as data grows. We use PostgreSQL to store users, transactions, lookup values, budgets, and forecast records in related tables. Flask provides the application routes and database access; the browser interface is served by Flask and uses HTML, CSS, and JavaScript.
 
-The current app records expenses from its manual-entry form. The database supports income transactions too, but the form's insert statement writes `Expense`. Some schema tables are defined without an active Flask workflow that populates them. We describe those distinctions below rather than treating every schema table as an active feature.
+The current app records expenses from its manual-entry form. The database supports income transactions too, but the form's insert statement writes `Expense`. 
+
 
 ## 4. Architecture and Database Design
 
 ### 4.1 Architecture
 
-```mermaid
-flowchart LR
-    Browser["Browser: HTML / CSS / JavaScript"] -->|"HTTP + JSON / forms"| Flask["Flask application"]
-    Flask -->|"SQL over psycopg2"| PostgreSQL["PostgreSQL"]
-    Flask -->|"Local saved model artifacts"| Models["LSTM inference"]
-    PostgreSQL --> Users["Users, transactions, budgets, predictions"]
-```
+Preprocessing: Clean and standardize transaction data, extract relevant features, and create time-series sequences. 
+LSTM (overall and category wise): Forecast future spending using historical time-series data. 
+Rule Based System: Detect anomalous spending patterns. 
+Datasets: Two datasets, initial one had data issues and performed poorly for all baselines.
+RNN, CNN, Seasonal Naives, XGBoost : Baseline models 
+Python: Data preprocessing, model training, and backend/ML integration. 
+PostgreSQL: Store users, transactions, budgets, predictions, alerts, and related data. 
+React: Frontend/dashboard for user interaction and visualization. 
+Flask: Backend REST APIs connecting the frontend, database, and ML models. 
+Docker: Containerize the application for deployment. 
+Azure: Cloud deployment and hosting.
 
 The application is containerized with Docker Compose. The Compose file defines a PostgreSQL 16 database and a Flask/Gunicorn application. The app connects to PostgreSQL using the Compose service hostname `db`. Compose currently publishes host ports using `HOST_DB_PORT` and `APP_PORT`.
 
-The app uses Flask's signed browser session cookie for login state. Passwords are stored as Werkzeug password hashes. The `user_sessions` table exists in the schema, but Flask's current login flow does not persist its session there.
+The app uses Flask's signed browser session cookie for login state. Passwords are stored as password hashes. The `user_sessions` table exists in the schema, but Flask's current login flow does not persist its session there.
 
-Tracing the SQL in `backend/app.py`, the normal account, onboarding, and dashboard flows read or write `users`, `user_preferences`, `categories`, `payment_modes`, `locations`, `transactions`, `budgets`, `model_registry`, and `predictions`. The app does not populate `accounts`, `statement_uploads`, `user_sessions`, `recurring_payments`, `goals`, `monthly_summary`, `category_monthly_summary`, `detected_recurring_payments`, `goal_progress`, `anomalies`, `alerts`, or `notifications` as part of those normal workflows. Account deletion touches some analytics/goal tables for cleanup. Dashboard alerts are currently calculated in application code and returned in the API response; they are not inserted into the `alerts` table.
+Tracing the SQL in backend/app.py, the normal account, onboarding, and dashboard flows read or write users, user_preferences, categories, payment_modes, locations, transactions, budgets, model_registry, alerts, recurring_payments, and predictions. Account deletion touches some analytics/goal tables for cleanup. 
 
 ### 4.2 Conceptual and Logical Design
 
 The core entities are users, transactions, categories, budgets, and user preferences. Transactions reference category and optional payment-mode, location, account, and upload records. Forecasts reference a user and model registry entry; optional alert records can reference a forecast. The remaining analytics and goal entities store rollups or planned application data.
 
-```mermaid
-erDiagram
-    USERS ||--o| USER_PREFERENCES : has
-    USERS ||--o{ USER_SESSIONS : opens
-    USERS ||--o{ ACCOUNTS : owns
-    USERS ||--o{ STATEMENT_UPLOADS : uploads
-    USERS ||--o{ TRANSACTIONS : records
-    USERS ||--o{ BUDGETS : sets
-    USERS ||--o{ RECURRING_PAYMENTS : schedules
-    USERS ||--o{ GOALS : defines
-    USERS ||--o{ MONTHLY_SUMMARY : summarizes
-    USERS ||--o{ CATEGORY_MONTHLY_SUMMARY : summarizes
-    USERS ||--o{ DETECTED_RECURRING_PAYMENTS : detects
-    USERS ||--o{ PREDICTIONS : receives
-    USERS ||--o{ ALERTS : receives
-    CATEGORIES ||--o{ TRANSACTIONS : classifies
-    CATEGORIES ||--o{ BUDGETS : limits
-    CATEGORIES ||--o{ RECURRING_PAYMENTS : classifies
-    CATEGORIES ||--o{ CATEGORY_MONTHLY_SUMMARY : summarizes
-    CATEGORIES ||--o{ DETECTED_RECURRING_PAYMENTS : classifies
-    PAYMENT_MODES ||--o{ TRANSACTIONS : identifies
-    LOCATIONS ||--o{ TRANSACTIONS : locates
-    ACCOUNTS ||--o{ TRANSACTIONS : funds
-    STATEMENT_UPLOADS ||--o{ TRANSACTIONS : imports
-    GOALS ||--o{ GOAL_PROGRESS : tracks
-    TRANSACTIONS ||--o{ ANOMALIES : checked_for
-    MODEL_REGISTRY ||--o{ PREDICTIONS : generates
-    MODEL_REGISTRY ||--o{ ANOMALIES : evaluates
-    PREDICTIONS o|--o{ ALERTS : relates_to
-    ALERTS ||--o{ NOTIFICATIONS : delivers
-```
-
-The diagram summarizes foreign keys declared in migrations. The `transactions` to `accounts` and `statement_uploads` relationships are composite `(id, user_id)` foreign keys, enforcing that a linked account or upload belongs to the same user. `predictions.category_id` is nullable but the migration does not declare it as a foreign key to `categories`.
+ The `transactions` to `accounts` and `statement_uploads` relationships are composite `(id, user_id)` foreign keys, enforcing that a linked account or upload belongs to the same user. `predictions.category_id` is nullable but the migration does not declare it as a foreign key to `categories`.
 
 ### 4.3 Application Data Flow
 
@@ -150,7 +123,7 @@ The rows below are **illustrative synthetic examples**, not copied from the data
 | `model_registry` | `(1, 'Category seven-day LSTM', 'LSTM_CATEGORY', '<local model path>', CURRENT_TIMESTAMP, NULL)` |
 | `predictions` | `(1, 'U000000001', 1, 'category_daily', 5, '2026-01-11', 275.00, CURRENT_TIMESTAMP)` |
 
-The optional `dbms/seed/sample_data.sql` script is not part of app startup. It expects `preprocessing/processed/standardised_dataset.csv`, which was not found at the documented path during report preparation. The script also inserts users without the `username` column that migration 005 makes NOT NULL. Therefore it is not runnable as-is against the current 001-005 schema. It also synthesizes placeholder user names, emails, and password hashes, so those rows are for development/demo use only. Use the application's registration and onboarding flow for a reproducible demo unless the seed script and its input dataset are first updated.
+The optional `dbms/seed/sample_data.sql` script is not part of app startup. It expects `preprocessing/processed/standardised_dataset.csv`, which isn’t necessary for the actual app. It also synthesizes placeholder user names, emails, and password hashes, so those rows are for development/demo use only. 
 
 ## 5. Normalization and Functional Dependencies
 
@@ -229,29 +202,10 @@ DO UPDATE SET budget_amount = EXCLUDED.budget_amount;
 
 ## 7. ER Diagram and UML Diagram
 
-The Mermaid ER diagram is included in Section 4.2. The following UML-style sequence diagram documents the implemented transaction-entry interaction. These diagrams are made  from the migration definitions and Flask route behavior; they are not screenshots of a deployed system.
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant UI as Dashboard form
-    participant API as Flask /api/transactions
-    participant DB as PostgreSQL
-    User->>UI: Enter date, category, amount, description
-    UI->>API: POST with CSRF token and session cookie
-    API->>API: Validate positive amount, date, authentication
-    API->>DB: Look up category by name
-    DB-->>API: category_id
-    API->>DB: Insert Expense owned by session user_id
-    DB-->>API: transaction_id
-    API-->>UI: HTTP 201 with transaction_id
-    UI-->>User: Show saved transaction / refresh analytics
-```
-
-The report diagrams above are derived from the migration foreign keys and the transaction route. No deployment screenshots are included in this report.
+The ER and UML diagrams are included in the project report.
 
 ## 8. Conclusion and Future Scope
 
 We implemented a relational PostgreSQL foundation for user accounts, transaction capture, lookup data, budgets, analytics records, and model outputs. The app already supports account registration/login, onboarding, CSV transaction import, manual expense entry, dashboard aggregation, and stored forecast rows.
 
-Before final submission, we should add the verified team details, run the project and capture actual screenshots, and provide the standardized CSV if we intend to reproduce the SQL seed procedure. Future database work could add explicit migration management for existing databases, enforce month/date rules consistently, and wire the unused goals, recurring-payment, upload-metadata, and notification tables to application flows. The repository does not establish a completed Azure deployment, managed database, or external file-storage service.
+Future database work could add explicit migration management for existing databases, enforce month/date rules consistently, and wire the unused goals, recurring-payment, upload-metadata, and notification tables to application flows. The repository does not establish a completed Azure deployment, managed database, or external file-storage service.
